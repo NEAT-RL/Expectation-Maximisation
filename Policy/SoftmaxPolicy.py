@@ -3,6 +3,7 @@ import numpy as np
 import math
 import logging
 from datetime import datetime
+import scipy.stats as stats
 
 logging.basicConfig(filename='log/policy-debug-' + str(datetime.now()) + '.log', level=logging.DEBUG)
 logger = logging.getLogger()
@@ -14,6 +15,9 @@ class SoftmaxPolicy(object):
         self.parameters = []
         self.num_actions = num_actions
         self.sigma = 1.0
+        self.default_learning_rate = 0.001
+        self.kl_threshold = 0.1
+        self.tiny = 1e-8
         self.initialise_parameters()
 
     def initialise_parameters(self):
@@ -22,9 +26,11 @@ class SoftmaxPolicy(object):
          - Zero vectors
          - Random vectors (capped to [-10, 10] for example)
          - Maximising log likelihood etc
-        :return:
+        :return: 
         """
-        self.parameters = np.random.uniform(low=-1, high=1, size=(self.num_actions, self.dimension))
+        self.parameters = np.random.uniform(low=self.tiny, high=1, size=(self.num_actions, self.dimension))
+        # self.parameters = np.zeros(shape=(self.num_actions, self.dimension), dtype=float)
+        # self.parameters.fill(self.tiny)
 
     def get_num_actions(self):
         return self.num_actions
@@ -32,8 +38,8 @@ class SoftmaxPolicy(object):
     def get_action(self, state_feature):
         '''
         Perform dot product between state feature and policy parameter and return sample from the normal distribution
-        :param state_feature:
-        :return:
+        :param state_feature: 
+        :return: 
         '''
 
         # for each policy parameter (representing each action)
@@ -52,14 +58,16 @@ class SoftmaxPolicy(object):
         softmax = np.exp(action_probabilities) / np.sum(np.exp(action_probabilities), axis=0)
 
         # I could pre process
-        p = random.uniform(0, 1)
-        cumulative_probability = 0.0
-        chosen_policy_index = 0
-        for n, prob in enumerate(softmax):
-            cumulative_probability += prob
-            if p <= cumulative_probability:
-                chosen_policy_index = n
-                break
+        # p = random.uniform(0, 1)
+        # cumulative_probability = 0.0
+        # chosen_policy_index = 0
+        # for n, prob in enumerate(softmax):
+        #     cumulative_probability += prob
+        #     if p <= cumulative_probability:
+        #         chosen_policy_index = n
+        #         break
+
+        chosen_policy_index = np.argmax(softmax)
 
         return chosen_policy_index, softmax
 
@@ -68,18 +76,64 @@ class SoftmaxPolicy(object):
         Delta is an array where each element is delta for a policy parameter.
         Note: Number of policy parameters = number of actions.
         Each delta object contains a delta of the policy parameter.
-        :param delta:
+        :param delta: 
         :return:
+        Assume size of delta == number of actions
         """
-        for i, parameter in enumerate(self.parameters):
-            capped_value = False
-            delta_vector = delta[i]
-            for j, param in enumerate(parameter):
-                new_value = max(min(param + delta_vector.delta[j], 10), -10)
-                if math.fabs(new_value) == 10:
-                    logger.debug("Capped parameter value from %f, to: %d", param + delta_vector.delta[j], new_value)
-                    capped_value = True
-                parameter[j] = new_value
+        # Calculate KL-divergence
 
-            if capped_value:
-                logger.debug("Policy Parameter was capped: %s", parameter)
+        new_parameters = np.zeros(shape=(self.num_actions, self.dimension), dtype=float)
+
+        for i in range(len(self.parameters)):
+            new_parameters[i] = self.__calculate_gradient(self.parameters[i], delta[i])
+
+        for i in range(len(self.parameters)):
+            learning_rate = self.default_learning_rate
+            for j in range(10):
+
+                kl_difference = self.calculate_kl_divergence(np.array(new_parameters[i]), np.array(self.parameters[i]))
+                if kl_difference < self.kl_threshold:
+                    self.parameters[i] = new_parameters[i]
+                    break
+                else:
+                    logger.debug("Not updating policy parameter as kl_difference was %f. Learning rate=%f",
+                                 kl_difference, learning_rate)
+                    learning_rate /= 10  # reduce learning rate
+                    # recalculate gradient using the new learning rate
+                    new_parameters[i] = self.__calculate_gradient(self.parameters[i], delta[i], learning_rate)
+
+    def __calculate_gradient(self, parameter, delta_vector, learning_rate=None):
+        new_parameter = np.zeros(shape=self.dimension, dtype=float)
+
+        if learning_rate is None:
+            learning_rate = self.default_learning_rate
+
+        for j, param in enumerate(parameter):
+            new_parameter[j] = max(min(param - learning_rate * delta_vector.delta[j], 10), -10)  # adding tiny here to avoid getting potential 0 value
+
+        return new_parameter
+
+    def calculate_kl_divergence(self, pk, qk):
+        """
+        S = sum(pk * log(pk / qk), axis=0)
+        :return: 
+        """
+        pk_norm = np.array(self.normalize(pk))
+        qk_norm = np.array(self.normalize(qk))
+
+        # the normalised arrays may have negative number. So I just clip it to 0. # TODO: CHECK WITH YIMING.
+        pk_norm = pk_norm.clip(min=0)
+        pk_norm = qk_norm.clip(min=0)
+        kl_sum = 0
+        for i in range(len(pk)):
+            if math.isnan(pk_norm[i] * np.log(pk_norm[i]/(qk_norm[i] + self.tiny) + self.tiny)):
+                print("test")
+            kl_sum += pk_norm[i] * np.log(pk_norm[i]/(qk_norm[i] + self.tiny) + self.tiny)
+
+        return kl_sum
+
+
+    @staticmethod
+    def normalize(raw):
+        norm = [float(i) / sum(raw) for i in raw]
+        return norm
