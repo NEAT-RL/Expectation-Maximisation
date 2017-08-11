@@ -15,7 +15,7 @@ class SoftmaxPolicy(object):
         self.parameters = []
         self.num_actions = num_actions
         self.sigma = 1.0
-        self.default_learning_rate = 0.001
+        self.default_learning_rate = 0.01
         self.kl_threshold = 0.1
         self.tiny = 1e-8
         self.initialise_parameters()
@@ -71,6 +71,40 @@ class SoftmaxPolicy(object):
 
         return chosen_policy_index, softmax
 
+    def dlogpi(self, state_feature, action):
+        """
+        Add delta to all of the 3 policy parameters. one component at a time
+        Then calculcate the probability of producing the action
+        Then calculcate paraderivative
+        
+        :param state: 
+        :param action: 
+        :return: 
+        """
+        original_parameters = np.concatenate((self.parameters), axis=0)
+
+        para_derivatives = np.zeros(len(original_parameters), dtype=float)
+
+        for i in range(len(original_parameters)):
+            new_parameters = np.copy(original_parameters)
+            new_parameters[i] = new_parameters[i] - 0.00001
+
+            self.parameters = np.split(new_parameters, self.num_actions)
+            _, action_distribution = self.get_action(state_feature)
+            prev_prob = action_distribution[action]
+
+            new_parameters[i] = new_parameters[i] + 0.00001 * 2
+            self.parameters = np.split(new_parameters, self.num_actions)
+            _, action_distribution = self.get_action(state_feature)
+            after_prob = action_distribution[action]
+
+            para_derivatives[i] = (after_prob - prev_prob) / 2. / 0.00001
+
+        # Replace parameters with the original parameters
+        self.parameters = np.split(original_parameters, self.num_actions)
+
+        return para_derivatives  # return new parameters
+
     def update_parameters(self, delta):
         """
         Delta is an array where each element is delta for a policy parameter.
@@ -81,7 +115,7 @@ class SoftmaxPolicy(object):
         Assume size of delta == number of actions
         """
         # Calculate KL-divergence
-
+        delta = np.split(delta, self.num_actions)
         new_parameters = np.zeros(shape=(self.num_actions, self.dimension), dtype=float)
 
         for i in range(len(self.parameters)):
@@ -90,7 +124,6 @@ class SoftmaxPolicy(object):
         for i in range(len(self.parameters)):
             learning_rate = self.default_learning_rate
             for j in range(10):
-
                 kl_difference = self.calculate_kl_divergence(np.array(new_parameters[i]), np.array(self.parameters[i]))
                 if kl_difference < self.kl_threshold:
                     self.parameters[i] = new_parameters[i]
@@ -109,7 +142,7 @@ class SoftmaxPolicy(object):
             learning_rate = self.default_learning_rate
 
         for j, param in enumerate(parameter):
-            new_parameter[j] = max(min(param - learning_rate * delta_vector.delta[j], 10), -10)  # adding tiny here to avoid getting potential 0 value
+            new_parameter[j] = max(min(param + learning_rate * delta_vector[j], 10), -10)  # adding tiny here to avoid getting potential 0 value
 
         return new_parameter
 
@@ -122,13 +155,14 @@ class SoftmaxPolicy(object):
         qk_norm = np.array(self.normalize(qk))
 
         # the normalised arrays may have negative number. So I just clip it to 0. # TODO: CHECK WITH YIMING.
-        pk_norm = pk_norm.clip(min=0)
-        pk_norm = qk_norm.clip(min=0)
+        # OR SHOULD I NORMALISE THE VALUES TO BE BETWEEN [0, 1] AND THEN CALCULATE THE PROBABILITY DISTRIBUTION
+        # pk_norm = pk_norm.clip(min=0)
+        # pk_norm = qk_norm.clip(min=0)
         kl_sum = 0
         for i in range(len(pk)):
-            if math.isnan(pk_norm[i] * np.log(pk_norm[i]/(qk_norm[i] + self.tiny) + self.tiny)):
+            if math.isnan(pk_norm[i] * np.log(math.fabs(pk_norm[i])/math.fabs((qk_norm[i] + self.tiny)) + self.tiny)):
                 print("test")
-            kl_sum += pk_norm[i] * np.log(pk_norm[i]/(qk_norm[i] + self.tiny) + self.tiny)
+            kl_sum += pk_norm[i] * np.log(math.fabs(pk_norm[i])/math.fabs((qk_norm[i] + self.tiny)) + self.tiny)
 
         return kl_sum
 

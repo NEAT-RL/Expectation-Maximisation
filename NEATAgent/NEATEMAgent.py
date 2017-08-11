@@ -70,45 +70,43 @@ class NeatEMAgent(object):
         delta_omega /= len(state_transitions)
         self.valueFunction.update_parameters(delta_omega)
 
-    def update_policy_function(self, state_transitions):
+    def update_policy_function(self, trajectories):
         """
-        Need to update the policy parameters which was used to make the action.
-        There are N number of discrete actions.
-        This N number is stored in Policy so I should be looking to put this method there 
-        :param state_transitions:
-        :return:
+        For each trajectory:
+            For each state transitions:
+                calculcate dlogpi
+                add dlogpi * td error to sum
+
+        # For each dimension of phi square result
+        
+        Questions:
+            * I don't understand how the three parameters fit this equation.
+            * I have three error functions which correspond to three different theta parameters which correspond to action
+        :param trajectories: 
+        :return: 
         """
         # Update the policy parameters for the actions that are taken
 
-        # Create a delta vector of size [# actions] where each element is a delta policy object
-        delta = np.array([DeltaPolicy(self.dimension) for _ in range(self.policy.get_num_actions())])
+        # Create a delta vector of size [# actions * dimension] where each element is a delta policy object
+        error_func = np.zeros(shape=(self.policy.num_actions * self.dimension), dtype=float)
+        for (_, __, state_transitions) in enumerate(trajectories):
+            for state_transition in state_transitions:
+                # calculate dlogpi
 
-        for state_transition in state_transitions:
-            phi = self.feature.phi(state_transition.get_start_state())
-            _, actions_distribution = self.policy.get_action(phi)
+                phi_old = self.feature.phi(state_transition.get_start_state())
+                dlogpi = self.policy.dlogpi(phi_old, state_transition.get_action())
 
-            action_prob = actions_distribution[state_transition.get_action()]
-            # check for matrix multiplication
-            phi_dot = np.dot(action_prob * (action_prob - 1), np.array(phi))
-            # convert vector into a column vector
-            phi_dot = phi_dot.reshape(-1, 1)
+                phi_new = self.feature.phi(state_transition.get_end_state())
+                td_error = state_transition.get_reward() + self.gamma * self.valueFunction.get_value(phi_new) - self.valueFunction.get_value(phi_old)
 
-            component1 = np.matmul(phi_dot, phi_dot.transpose())  # produces a dimension * dimension matrix
+                dlogpi *= td_error
 
-            phi_new = self.feature.phi(state_transition.get_end_state())
-            td_error = state_transition.get_reward() + self.gamma * self.valueFunction.get_value(phi_new) - self.valueFunction.get_value(phi)
+                error_func += dlogpi
 
-            component2 = np.dot((1 - action_prob) * td_error, phi)
+        error_func /= len(trajectories)  # we divide the new parameter by M == number of trajectories
 
-            # we only update the policy parameter that was used to perform the action
-            delta[state_transition.get_action()].add(component1, component2)
-
-        for i in range(len(delta)):
-            delta[i].component1 = delta[i].component1 / 1  # delta[i].state_transition_count
-            delta[i].component2 = np.dot(2.0 / 1, delta[i].component2)
-            delta[i].calculate_delta()
-
-        self.policy.update_parameters(delta)  # delta is a vector of size (num of actions) and each element is a vector of policy parameter
+        # calculate derivative of squared e w.r.t theta
+        self.policy.update_parameters(error_func)  # delta is a vector of size (num of actions) and each element is a vector of policy parameter
 
 
 class DeltaPolicy(object):

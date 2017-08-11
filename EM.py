@@ -102,6 +102,7 @@ class NeatEM(object):
 
     def execute_algorithm(self, generations):
         for i in range(generations):
+            logger.debug("Generation %d", i)
             self.fitness_function()
 
     def fitness_function(self):
@@ -113,29 +114,34 @@ class NeatEM(object):
         """
         tstart = datetime.now()
 
-        total_reward, state_transitions = self.generate_new_trajectory()
+        total_reward, new_state_transitions = self.generate_new_trajectory()
 
-        heapq.heappush(self.trajectories, (total_reward, datetime.now(), state_transitions))
+        heapq.heappush(self.trajectories, (total_reward, datetime.now(), new_state_transitions))
 
         # '''
         # For each individual update value function using TD error and experience replay
         # And update the policy parameter
         # '''
-        # experience_replay = props.getint('evaluation', 'experience_replay')
-        # random_state_transitions = random.sample(state_transitions, experience_replay)
 
         # strip weak trajectories from trajectory_set
         self.trajectories = heapq.nlargest(props.getint('initialisation', 'trajectory_size'), self.trajectories)
+
+        state_transitions = set()
+        for i in range(len(self.trajectories)):
+            state_transitions = state_transitions | set(self.trajectories[i][2])  # Collect set of state transitions
+
+        experience_replay = props.getint('evaluation', 'experience_replay')
+        random_state_transitions = random.sample(state_transitions, experience_replay)
+
+        # update value function
+        self.agent.update_value_function(random_state_transitions)
 
         # now assign fitness to each individual/genome
         # fitness is the log prob of following the best trajectory
         best_trajectory = self.trajectories[0]
 
-        # update value function
-        self.agent.update_value_function(best_trajectory[2])
-
         # update policy parameter
-        self.agent.update_policy_function(best_trajectory[2])
+        self.agent.update_policy_function(self.trajectories)
 
         best_trajectory_prob = 0
         total_reward, _, trajectory_state_transitions = best_trajectory
@@ -157,7 +163,6 @@ class NeatEM(object):
         logger.debug("Completed Generation. Time taken: %f", (datetime.now() - tstart).total_seconds())
 
     def generate_new_trajectory(self):
-        logger.debug("Generating %d new trajectory")
         max_steps = props.getint('initialisation', 'max_steps')
         step_size = props.getint('initialisation', 'step_size')
 
