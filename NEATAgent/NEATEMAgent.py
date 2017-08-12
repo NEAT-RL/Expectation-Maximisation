@@ -71,42 +71,65 @@ class NeatEMAgent(object):
         self.valueFunction.update_parameters(delta_omega)
 
     def update_policy_function(self, trajectories):
-        """
-        For each trajectory:
-            For each state transitions:
-                calculcate dlogpi
-                add dlogpi * td error to sum
+        # Create a derivative_of_error_squared vector of size [# actions * dimension]. We calculate derivative w.r.t. theta
+        d_error_squared = np.zeros(shape=(self.policy.num_actions * self.dimension), dtype=float)
 
-        # For each dimension of phi square result
-        
-        Questions:
-            * I don't understand how the three parameters fit this equation.
-            * I have three error functions which correspond to three different theta parameters which correspond to action
-        :param trajectories: 
-        :return: 
-        """
-        # Update the policy parameters for the actions that are taken
+        '''
+        For each parameter in error squared function:
+           e(theta + delta)Transpose cdot e(theta+delta) - e(theta-delta)/(2*delta)
+        '''
+        # first copy the policy parameters
+        original_policy_parameters = self.policy.get_policy_parameters()
 
-        # Create a delta vector of size [# actions * dimension] where each element is a delta policy object
-        error_func = np.zeros(shape=(self.policy.num_actions * self.dimension), dtype=float)
-        for (_, __, state_transitions) in enumerate(trajectories):
-            for state_transition in state_transitions:
-                # calculate dlogpi
+        for i in range(len(original_policy_parameters)):
+            error_func_positive_delta = np.zeros(shape=(self.policy.num_actions * self.dimension), dtype=float)
+            error_func_negative_delta = np.zeros(shape=(self.policy.num_actions * self.dimension), dtype=float)
 
-                phi_old = self.feature.phi(state_transition.get_start_state())
-                dlogpi = self.policy.dlogpi(phi_old, state_transition.get_action())
+            new_parameters_positive_delta = np.copy(original_policy_parameters)
+            new_parameters_negative_delta = np.copy(original_policy_parameters)
 
-                phi_new = self.feature.phi(state_transition.get_end_state())
-                td_error = state_transition.get_reward() + self.gamma * self.valueFunction.get_value(phi_new) - self.valueFunction.get_value(phi_old)
+            new_parameters_positive_delta[i] = new_parameters_positive_delta[i] + 0.0001
+            new_parameters_negative_delta[i] = new_parameters_negative_delta[i] - 0.0001
 
-                dlogpi *= td_error
+            for j, (_, __, state_transitions) in enumerate(trajectories):
+                for state_transition in state_transitions:
 
-                error_func += dlogpi
+                    phi_old = self.feature.phi(state_transition.get_start_state())
 
-        error_func /= len(trajectories)  # we divide the new parameter by M == number of trajectories
+                    # set theta + delta and calculate dlogpi_positive_delta
+                    self.policy.set_policy_parameters(new_parameters_positive_delta)
+                    dlogpi_positive_delta = self.policy.dlogpi(phi_old, state_transition.get_action())
 
-        # calculate derivative of squared e w.r.t theta
-        self.policy.update_parameters(error_func)  # delta is a vector of size (num of actions) and each element is a vector of policy parameter
+                    # set theta - delta and calculate dlogpi_negative_delta
+                    self.policy.set_policy_parameters(new_parameters_negative_delta)
+                    dlogpi_negative_delta = self.policy.dlogpi(phi_old, state_transition.get_action())
+
+                    # calculate td_error
+                    phi_new = self.feature.phi(state_transition.get_end_state())
+                    td_error = state_transition.get_reward() + self.gamma * self.valueFunction.get_value(
+                        phi_new) - self.valueFunction.get_value(phi_old)
+
+                    dlogpi_positive_delta *= td_error
+                    dlogpi_negative_delta *= td_error
+
+                    error_func_positive_delta += dlogpi_positive_delta
+                    error_func_negative_delta += dlogpi_negative_delta
+
+            error_func_positive_delta /= len(trajectories)
+            error_func_negative_delta /= len(trajectories)
+
+            '''
+            now calculate scalar approximation
+            e(theta + delta)^Transpose dot e(theta+delta) - e(theta-delta)^Transpose dot e(theta-delta)/(2*delta)
+            '''
+            error_derivative = np.dot(np.transpose(error_func_positive_delta), error_func_positive_delta) - np.dot(np.transpose(error_func_negative_delta), error_func_negative_delta)
+            error_derivative /= (2 * 0.0001)
+            d_error_squared[i] = error_derivative
+
+        # reset policy parameter to original
+        self.policy.set_policy_parameters(original_policy_parameters)
+        # update policy
+        self.policy.update_parameters(d_error_squared)  # delta is a vector of size (num of actions) and each element is a vector of policy parameter
 
 
 class DeltaPolicy(object):

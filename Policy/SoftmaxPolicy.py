@@ -20,6 +20,17 @@ class SoftmaxPolicy(object):
         self.tiny = 1e-8
         self.initialise_parameters()
 
+    def get_policy_parameters(self):
+        return np.concatenate((self.parameters), axis=0)
+
+    def set_policy_parameters(self, parameters, dimension=1):
+        if dimension == 1:
+            self.parameters = np.split(parameters, self.num_actions)
+        elif dimension == self.num_actions:
+            self.parameters = parameters
+        else:
+            raise Exception("dimension must be either 1 or number of actions")
+
     def initialise_parameters(self):
         """
         TODO: See different ways of initialising the parameters.
@@ -81,29 +92,38 @@ class SoftmaxPolicy(object):
         :param action: 
         :return: 
         """
-        original_parameters = np.concatenate((self.parameters), axis=0)
+        # original_parameters = np.concatenate((self.parameters), axis=0)
+        #
+        # para_derivatives = np.zeros(len(original_parameters), dtype=float)
+        #
+        # for i in range(len(original_parameters)):
+        #     new_parameters = np.copy(original_parameters)
+        #     new_parameters[i] = new_parameters[i] - 0.00001
+        #
+        #     self.parameters = np.split(new_parameters, self.num_actions)
+        #     _, action_distribution = self.get_action(state_feature)
+        #     prev_prob = action_distribution[action]
+        #
+        #     new_parameters[i] = new_parameters[i] + 0.00001 * 2
+        #     self.parameters = np.split(new_parameters, self.num_actions)
+        #     _, action_distribution = self.get_action(state_feature)
+        #     after_prob = action_distribution[action]
+        #
+        #     para_derivatives[i] = (after_prob - prev_prob) / 2. / 0.00001
+        #
+        # # Replace parameters with the original parameters
+        # self.parameters = np.split(original_parameters, self.num_actions)
+        #
+        # return para_derivatives  # return new parameters
+        recommended_action, action_distribution = self.get_action(state_feature)
+        dlogpi = state_feature * (1 - action_distribution[action])
 
-        para_derivatives = np.zeros(len(original_parameters), dtype=float)
-
-        for i in range(len(original_parameters)):
-            new_parameters = np.copy(original_parameters)
-            new_parameters[i] = new_parameters[i] - 0.00001
-
-            self.parameters = np.split(new_parameters, self.num_actions)
-            _, action_distribution = self.get_action(state_feature)
-            prev_prob = action_distribution[action]
-
-            new_parameters[i] = new_parameters[i] + 0.00001 * 2
-            self.parameters = np.split(new_parameters, self.num_actions)
-            _, action_distribution = self.get_action(state_feature)
-            after_prob = action_distribution[action]
-
-            para_derivatives[i] = (after_prob - prev_prob) / 2. / 0.00001
-
-        # Replace parameters with the original parameters
-        self.parameters = np.split(original_parameters, self.num_actions)
-
-        return para_derivatives  # return new parameters
+        # return array of size self.num_actions * self.dimension with padding of zeros for policy parameter not chosen as action
+        return np.lib.pad(dlogpi,
+                          ((action - 0) * self.dimension, (self.num_actions - 1 - action) * self.dimension),
+                          'constant',
+                          constant_values=(0, 0)
+                          )
 
     def update_parameters(self, delta):
         """
@@ -142,7 +162,7 @@ class SoftmaxPolicy(object):
             learning_rate = self.default_learning_rate
 
         for j, param in enumerate(parameter):
-            new_parameter[j] = max(min(param + learning_rate * delta_vector[j], 10), -10)  # adding tiny here to avoid getting potential 0 value
+            new_parameter[j] = max(min(param - learning_rate * delta_vector[j], 10), -10)
 
         return new_parameter
 
@@ -161,7 +181,7 @@ class SoftmaxPolicy(object):
         kl_sum = 0
         for i in range(len(pk)):
             if math.isnan(pk_norm[i] * np.log(math.fabs(pk_norm[i])/math.fabs((qk_norm[i] + self.tiny)) + self.tiny)):
-                print("test")
+                print("KL divergence resulted in nan. Normalised parameter is probably negative")
             kl_sum += pk_norm[i] * np.log(math.fabs(pk_norm[i])/math.fabs((qk_norm[i] + self.tiny)) + self.tiny)
 
         return kl_sum

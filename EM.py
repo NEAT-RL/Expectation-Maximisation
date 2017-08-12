@@ -118,11 +118,6 @@ class NeatEM(object):
 
         heapq.heappush(self.trajectories, (total_reward, datetime.now(), new_state_transitions))
 
-        # '''
-        # For each individual update value function using TD error and experience replay
-        # And update the policy parameter
-        # '''
-
         # strip weak trajectories from trajectory_set
         self.trajectories = heapq.nlargest(props.getint('initialisation', 'trajectory_size'), self.trajectories)
 
@@ -134,16 +129,18 @@ class NeatEM(object):
         random_state_transitions = random.sample(state_transitions, experience_replay)
 
         # update value function
+        logger.debug("Updating value function")
         self.agent.update_value_function(random_state_transitions)
+
+        # update policy parameter
+        logger.debug("Updating policy function")
+        self.agent.update_policy_function(self.trajectories)
 
         # now assign fitness to each individual/genome
         # fitness is the log prob of following the best trajectory
         best_trajectory = self.trajectories[0]
-
-        # update policy parameter
-        self.agent.update_policy_function(self.trajectories)
-
         best_trajectory_prob = 0
+
         total_reward, _, trajectory_state_transitions = best_trajectory
         for j, state_transition in enumerate(trajectory_state_transitions):
             # calculate probability of the action where policy action = action
@@ -151,18 +148,18 @@ class NeatEM(object):
             _, actions_distribution = self.agent.get_policy().get_action(state_features)
             best_trajectory_prob += np.log(actions_distribution[state_transition.get_action()])
 
-        fitness = best_trajectory_prob
-        self.agent.fitness = fitness
+        self.agent.fitness = best_trajectory_prob
 
+        logger.debug("Agent fitness: %f", self.agent.fitness)
         logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
         logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
 
-        # save the best individual's genome
-        logger.debug("Agent fitness: %f", self.agent.fitness)
-
+        # test agent
+        test_agent(self.agent)
         logger.debug("Completed Generation. Time taken: %f", (datetime.now() - tstart).total_seconds())
 
     def generate_new_trajectory(self):
+        logger.debug("Generating new trajectory")
         max_steps = props.getint('initialisation', 'max_steps')
         step_size = props.getint('initialisation', 'step_size')
 
@@ -195,14 +192,13 @@ class NeatEM(object):
             if done:
                 terminal_reached = True
 
-        logger.debug("Finished: Generating new trajectories")
+        logger.debug("Finished: Generating new trajectory")
         return total_reward, new_trajectory
 
 
-def test_best_agent(agent):
+def test_agent(agent):
     t_start = datetime.now()
 
-    max_steps = props.getint('initialisation', 'max_steps')
     test_episodes = props.getint('test', 'test_episodes')
     step_size = props.getint('initialisation', 'step_size')
 
@@ -212,29 +208,29 @@ def test_best_agent(agent):
         state = env.reset()
         terminal_reached = False
         steps = 0
-        while not terminal_reached and steps < max_steps:
-            env.render()
+        while not terminal_reached:
+            # env.render() # TODO: render if passed as argument (should make this a program argument)
             state_features = agent.feature.phi(state)
             action, actions_distribution = agent.get_policy().get_action(state_features)
             state, reward, done, info = env.step(action)
+            total_rewards += reward
 
             for x in range(step_size - 1):
                 if done:
                     terminal_reached = True
                     break
-                state, reward2, done, info = env.step(action)
-                reward += reward2
-
-            total_rewards += reward
+                state, reward, done, info = env.step(action)
+                total_rewards += reward
 
             steps += 1
             if done:
                 terminal_reached = True
+
         total_steps += steps
     average_steps_per_episodes = total_steps / test_episodes
     average_rewards_per_episodes = total_rewards / test_episodes
 
-    # save this to file along with the generation number
+    # save this to file
     entry = [average_steps_per_episodes, average_rewards_per_episodes]
     with open(r'agent_evaluation.csv', 'a') as f:
         writer = csv.writer(f)
@@ -295,9 +291,9 @@ if __name__ == '__main__':
         population.execute_algorithm(props.getint('neuralnet', 'generation'))
 
         # Generate test results
-        outdir = 'videos/tmp/neat-em-data/{0}-{1}'.format(env.spec.id, str(datetime.now()))
-        env = wrappers.Monitor(env, directory=outdir, force=True)
-        test_best_agent(population.agent)
+        # outdir = 'videos/tmp/neat-em-data/{0}-{1}'.format(env.spec.id, str(datetime.now()))
+        # env = wrappers.Monitor(env, directory=outdir, force=True)
+        # test_agent(population.agent)
 
         # visualize.plot_stats(population.stats, ylog=False, view=False, filename="fitness.svg")
 
