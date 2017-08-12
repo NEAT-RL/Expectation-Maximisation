@@ -1,7 +1,7 @@
 from ValueFunction.ValueFunction import ValueFunction
 from Policy.SoftmaxPolicy import SoftmaxPolicy
 import numpy as np
-import Feature
+from . import Feature
 import math
 """
 Mountain car
