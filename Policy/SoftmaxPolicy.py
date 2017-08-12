@@ -15,7 +15,7 @@ class SoftmaxPolicy(object):
         self.parameters = []
         self.num_actions = num_actions
         self.sigma = 1.0
-        self.default_learning_rate = 0.01
+        self.default_learning_rate = 0.001
         self.kl_threshold = 0.1
         self.tiny = 1e-8
         self.initialise_parameters()
@@ -68,17 +68,11 @@ class SoftmaxPolicy(object):
 
         softmax = np.exp(action_probabilities) / np.sum(np.exp(action_probabilities), axis=0)
 
-        # I could pre process
-        # p = random.uniform(0, 1)
-        # cumulative_probability = 0.0
-        # chosen_policy_index = 0
-        # for n, prob in enumerate(softmax):
-        #     cumulative_probability += prob
-        #     if p <= cumulative_probability:
-        #         chosen_policy_index = n
-        #         break
-
-        chosen_policy_index = np.argmax(softmax)
+        p = random.uniform(0, 1)
+        if p < 0.05:
+            chosen_policy_index = random.randint(0, len(softmax) - 1)
+        else:
+            chosen_policy_index = np.argmax(softmax)
 
         return chosen_policy_index, softmax
 
@@ -115,6 +109,7 @@ class SoftmaxPolicy(object):
         # self.parameters = np.split(original_parameters, self.num_actions)
         #
         # return para_derivatives  # return new parameters
+
         recommended_action, action_distribution = self.get_action(state_feature)
         dlogpi = state_feature * (1 - action_distribution[action])
 
