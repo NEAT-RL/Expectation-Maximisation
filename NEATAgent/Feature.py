@@ -2,10 +2,9 @@ import numpy as np
 import math
 
 class DiscretizedFeature(object):
-    def __init__(self, input_dimension, output_dimension, intervals):
+    def __init__(self, input_dimension, output_dimension):
         self.input_dimension = input_dimension
         self.output_dimension = output_dimension
-        self.intervals = intervals # is a 3d list
 
     def phi(self, state):
         """
@@ -13,7 +12,7 @@ class DiscretizedFeature(object):
         :param state: 
         :return: feature vector of size outputDimension where each element is binary
         """
-
+        '''
         featureData = np.zeros(self.output_dimension, dtype=float)
         count = 0
         for i in range(self.input_dimension):
@@ -21,6 +20,14 @@ class DiscretizedFeature(object):
                 featureData[count] = self.discretise(state[i], self.intervals[i][j][0], self.intervals[i][j][1])
                 count += 1
 
+        return featureData
+        '''
+        featureData = np.zeros(self.output_dimension, dtype=float)
+        polynomial_dimension = self.output_dimension // self.input_dimension
+        for i in range(polynomial_dimension):
+            for j in range(self.input_dimension):
+                featureData[polynomial_dimension * i + j] = pow(state[j], i + 1)
+        
         return featureData
 
     @staticmethod

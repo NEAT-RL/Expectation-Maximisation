@@ -20,14 +20,14 @@ class NeatEMAgent(object):
     def __init__(self, dimension, num_actions):
         self.dimension = dimension
         # self.feature = self.__create_discretised_feature([5, 5], 2, [-1.2, -0.07], [0.6, 0.07])
-        self.feature = self.__create_discretised_feature([10, 10, 10, 10], 4, [-2.4, -10, -41.8 * math.pi / 180, -10], [2.4, 10, 41.8 * math.pi / 180, 10])
+        self.feature = self.__create_discretised_feature(4, 16)
         self.valueFunction = ValueFunction(dimension)
         self.policy = SoftmaxPolicy(dimension, num_actions)
         self.fitness = 0
         self.gamma = 0.99
 
     @staticmethod
-    def __create_discretised_feature(partition_size, state_length, state_lower_bounds, state_upper_bounds):
+    def __create_discretised_feature(state_length, output_dimension):
         """
         :param partition_size: Array of partition_sizes for each state field
         :param state_length: Number of states == input dimension (state)
@@ -35,15 +35,7 @@ class NeatEMAgent(object):
         :param state_upper_bounds: array of upper bounds for each state field
         :return: discretised feature
         """
-        intervals = []
-        output_dimension = 0
-
-        for i in range(state_length):
-            output_dimension += partition_size[i]
-            state_col = Feature.DiscretizedFeature.create_partition(state_lower_bounds[i],
-                                                                    state_upper_bounds[i], partition_size[i])
-            intervals.append(state_col)
-        return Feature.DiscretizedFeature(state_length, output_dimension, intervals)
+        return Feature.DiscretizedFeature(state_length, output_dimension)
 
     def get_feature(self):
         return self.feature
@@ -82,14 +74,16 @@ class NeatEMAgent(object):
         original_policy_parameters = self.policy.get_policy_parameters()
 
         for i in range(len(original_policy_parameters)):
+            self.policy.set_policy_parameters(original_policy_parameters)
+
             error_func_positive_delta = np.zeros(shape=(self.policy.num_actions * self.dimension), dtype=float)
             error_func_negative_delta = np.zeros(shape=(self.policy.num_actions * self.dimension), dtype=float)
 
             new_parameters_positive_delta = np.copy(original_policy_parameters)
             new_parameters_negative_delta = np.copy(original_policy_parameters)
 
-            new_parameters_positive_delta[i] = new_parameters_positive_delta[i] + 0.0001
-            new_parameters_negative_delta[i] = new_parameters_negative_delta[i] - 0.0001
+            new_parameters_positive_delta[i] = new_parameters_positive_delta[i] + 0.001
+            new_parameters_negative_delta[i] = new_parameters_negative_delta[i] - 0.001
 
             for j, (_, __, state_transitions) in enumerate(trajectories):
                 for state_transition in state_transitions:
@@ -123,7 +117,7 @@ class NeatEMAgent(object):
             e(theta + delta)^Transpose dot e(theta+delta) - e(theta-delta)^Transpose dot e(theta-delta)/(2*delta)
             '''
             error_derivative = np.dot(np.transpose(error_func_positive_delta), error_func_positive_delta) - np.dot(np.transpose(error_func_negative_delta), error_func_negative_delta)
-            error_derivative /= (2 * 0.0001)
+            error_derivative /= (2 * 0.001)
             d_error_squared[i] = error_derivative
 
         # reset policy parameter to original

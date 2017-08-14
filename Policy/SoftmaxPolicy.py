@@ -15,7 +15,7 @@ class SoftmaxPolicy(object):
         self.parameters = []
         self.num_actions = num_actions
         self.sigma = 1.0
-        self.default_learning_rate = 0.001
+        self.default_learning_rate = 0.01
         self.kl_threshold = 0.1
         self.tiny = 1e-8
         self.initialise_parameters()
@@ -69,7 +69,7 @@ class SoftmaxPolicy(object):
         softmax = np.exp(action_probabilities) / np.sum(np.exp(action_probabilities), axis=0)
 
         p = random.uniform(0, 1)
-        if p < 0.05:
+        if p < 0.02:
             chosen_policy_index = random.randint(0, len(softmax) - 1)
         else:
             chosen_policy_index = np.argmax(softmax)
@@ -86,30 +86,30 @@ class SoftmaxPolicy(object):
         :param action: 
         :return: 
         """
-        # original_parameters = np.concatenate((self.parameters), axis=0)
-        #
-        # para_derivatives = np.zeros(len(original_parameters), dtype=float)
-        #
-        # for i in range(len(original_parameters)):
-        #     new_parameters = np.copy(original_parameters)
-        #     new_parameters[i] = new_parameters[i] - 0.00001
-        #
-        #     self.parameters = np.split(new_parameters, self.num_actions)
-        #     _, action_distribution = self.get_action(state_feature)
-        #     prev_prob = action_distribution[action]
-        #
-        #     new_parameters[i] = new_parameters[i] + 0.00001 * 2
-        #     self.parameters = np.split(new_parameters, self.num_actions)
-        #     _, action_distribution = self.get_action(state_feature)
-        #     after_prob = action_distribution[action]
-        #
-        #     para_derivatives[i] = (after_prob - prev_prob) / 2. / 0.00001
-        #
-        # # Replace parameters with the original parameters
-        # self.parameters = np.split(original_parameters, self.num_actions)
-        #
-        # return para_derivatives  # return new parameters
-
+        original_parameters = np.concatenate((self.parameters), axis=0)
+        
+        para_derivatives = np.zeros(len(original_parameters), dtype=float)
+        
+        for i in range(len(original_parameters)):
+            new_parameters = np.copy(original_parameters)
+            new_parameters[i] = new_parameters[i] - 0.00001
+        
+            self.parameters = np.split(new_parameters, self.num_actions)
+            _, action_distribution = self.get_action(state_feature)
+            prev_prob = action_distribution[action]
+        
+            new_parameters[i] = new_parameters[i] + 0.00001 * 2
+            self.parameters = np.split(new_parameters, self.num_actions)
+            _, action_distribution = self.get_action(state_feature)
+            after_prob = action_distribution[action]
+        
+            para_derivatives[i] = (after_prob - prev_prob) / 2. / 0.00001
+        
+        # Replace parameters with the original parameters
+        self.parameters = np.split(original_parameters, self.num_actions)
+        
+        return para_derivatives  # return new parameters
+        '''
         recommended_action, action_distribution = self.get_action(state_feature)
         dlogpi = state_feature * (1 - action_distribution[action])
 
@@ -119,6 +119,7 @@ class SoftmaxPolicy(object):
                           'constant',
                           constant_values=(0, 0)
                           )
+        '''
 
     def update_parameters(self, delta):
         """
