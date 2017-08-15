@@ -40,8 +40,8 @@ class SoftmaxPolicy(object):
          - Maximising log likelihood etc
         :return: 
         """
-        self.parameters = np.random.uniform(low=self.tiny, high=1, size=(self.num_actions, self.dimension))
-        # self.parameters = np.zeros(shape=(self.num_actions, self.dimension), dtype=float)
+        # self.parameters = np.random.uniform(low=self.tiny, high=1, size=(self.num_actions, self.dimension))
+        self.parameters = np.zeros(shape=(self.num_actions, self.dimension), dtype=float)
         # self.parameters.fill(self.tiny)
 
     def get_num_actions(self):
@@ -104,7 +104,7 @@ class SoftmaxPolicy(object):
             _, action_distribution = self.get_action(state_feature)
             after_prob = action_distribution[action]
         
-            para_derivatives[i] = (after_prob - prev_prob) / 2. / 0.00001
+            para_derivatives[i] = (after_prob - prev_prob) / (2. * 0.00001)
         
         # Replace parameters with the original parameters
         self.parameters = np.split(original_parameters, self.num_actions)
@@ -117,18 +117,19 @@ class SoftmaxPolicy(object):
         new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared)
 
         learning_rate = self.default_learning_rate
-        for j in range(5):
-            kl_difference = self.avg_kl_divergence(state_transitions, new_policy_parameters, current_policy_parameters)
-            if kl_difference < self.kl_threshold:
-                self.set_policy_parameters(new_policy_parameters)
-                break
-            else:
-                logger.debug("Not updating policy parameter as kl_difference was %f. Learning rate=%f", kl_difference,
-                             learning_rate)
-                learning_rate /= 10  # reduce learning rate
-                # recalculate gradient using the new learning rate
-                new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared,
-                                                                        learning_rate=learning_rate)
+        self.set_policy_parameters(new_policy_parameters)
+        # for j in range(5):
+        #     kl_difference = self.avg_kl_divergence(state_transitions, new_policy_parameters, current_policy_parameters)
+        #     if kl_difference < self.kl_threshold:
+        #         self.set_policy_parameters(new_policy_parameters)
+        #         break
+        #     else:
+        #         logger.debug("Not updating policy parameter as kl_difference was %f. Learning rate=%f", kl_difference,
+        #                      learning_rate)
+        #         learning_rate /= 10  # reduce learning rate
+        #         # recalculate gradient using the new learning rate
+        #         new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared,
+        #                                                                 learning_rate=learning_rate)
 
     def __calculate_new_parameters(self, current_parameters, delta_vector, learning_rate=None):
         new_parameter = np.zeros(shape=len(current_parameters), dtype=float)
