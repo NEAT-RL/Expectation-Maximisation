@@ -127,7 +127,8 @@ class SoftmaxPolicy(object):
                              learning_rate)
                 learning_rate /= 10  # reduce learning rate
                 # recalculate gradient using the new learning rate
-                new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared)
+                new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared,
+                                                                        learning_rate=learning_rate)
 
     def __calculate_new_parameters(self, current_parameters, delta_vector, learning_rate=None):
         new_parameter = np.zeros(shape=len(current_parameters), dtype=float)
@@ -156,9 +157,9 @@ class SoftmaxPolicy(object):
         kl_sum = 0
         for state_transition in state_transitions:
             self.set_policy_parameters(new_policy_parameters)
-            new_action_distribution = self.get_action(self.feature.phi(state_transition.get_start_state()))
+            _, new_action_distribution = self.get_action(self.feature.phi(state_transition.get_start_state()))
             self.set_policy_parameters(old_policy_parameters)
-            old_action_distribution = self.get_action(self.feature.phi(state_transition.get_start_state()))
+            _, old_action_distribution = self.get_action(self.feature.phi(state_transition.get_start_state()))
             kl_sum += stats.entropy(new_action_distribution, old_action_distribution)
 
         return kl_sum/len(state_transitions)
