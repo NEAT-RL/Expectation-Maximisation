@@ -10,9 +10,10 @@ logger = logging.getLogger()
 
 
 class SoftmaxPolicy(object):
-    def __init__(self, dimension, num_actions):
+    def __init__(self, dimension, num_actions, feature):
         self.dimension = dimension
         self.parameters = []
+        self.feature = feature
         self.num_actions = num_actions
         self.sigma = 1.0
         self.default_learning_rate = 0.01
@@ -109,81 +110,55 @@ class SoftmaxPolicy(object):
         self.parameters = np.split(original_parameters, self.num_actions)
         
         return para_derivatives  # return new parameters
-        '''
-        recommended_action, action_distribution = self.get_action(state_feature)
-        dlogpi = state_feature * (1 - action_distribution[action])
 
-        # return array of size self.num_actions * self.dimension with padding of zeros for policy parameter not chosen as action
-        return np.lib.pad(dlogpi,
-                          ((action - 0) * self.dimension, (self.num_actions - 1 - action) * self.dimension),
-                          'constant',
-                          constant_values=(0, 0)
-                          )
-        '''
+    def update_parameters(self, d_error_squared, state_transitions):
+        current_policy_parameters = np.concatenate((self.parameters), axis=0)
 
-    def update_parameters(self, delta):
-        """
-        Delta is an array where each element is delta for a policy parameter.
-        Note: Number of policy parameters = number of actions.
-        Each delta object contains a delta of the policy parameter.
-        :param delta: 
-        :return:
-        Assume size of delta == number of actions
-        """
-        # Calculate KL-divergence
-        delta = np.split(delta, self.num_actions)
-        new_parameters = np.zeros(shape=(self.num_actions, self.dimension), dtype=float)
+        new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared)
 
-        for i in range(len(self.parameters)):
-            new_parameters[i] = self.__calculate_gradient(self.parameters[i], delta[i])
+        learning_rate = self.default_learning_rate
+        for j in range(5):
+            kl_difference = self.avg_kl_divergence(state_transitions, new_policy_parameters, current_policy_parameters)
+            if kl_difference < self.kl_threshold:
+                self.set_policy_parameters(new_policy_parameters)
+                break
+            else:
+                logger.debug("Not updating policy parameter as kl_difference was %f. Learning rate=%f", kl_difference,
+                             learning_rate)
+                learning_rate /= 10  # reduce learning rate
+                # recalculate gradient using the new learning rate
+                new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared)
 
-        for i in range(len(self.parameters)):
-            learning_rate = self.default_learning_rate
-            for j in range(10):
-                kl_difference = self.calculate_kl_divergence(np.array(new_parameters[i]), np.array(self.parameters[i]))
-                if kl_difference < self.kl_threshold:
-                    self.parameters[i] = new_parameters[i]
-                    break
-                else:
-                    logger.debug("Not updating policy parameter as kl_difference was %f. Learning rate=%f",
-                                 kl_difference, learning_rate)
-                    learning_rate /= 10  # reduce learning rate
-                    # recalculate gradient using the new learning rate
-                    new_parameters[i] = self.__calculate_gradient(self.parameters[i], delta[i], learning_rate)
-
-    def __calculate_gradient(self, parameter, delta_vector, learning_rate=None):
-        new_parameter = np.zeros(shape=self.dimension, dtype=float)
+    def __calculate_new_parameters(self, current_parameters, delta_vector, learning_rate=None):
+        new_parameter = np.zeros(shape=len(current_parameters), dtype=float)
 
         if learning_rate is None:
             learning_rate = self.default_learning_rate
 
-        for j, param in enumerate(parameter):
-            new_parameter[j] = max(min(param - learning_rate * delta_vector[j], 10), -10)
+        for i, param in enumerate(current_parameters):
+            new_parameter[i] = max(min(param - learning_rate * delta_vector[i], 10), -10)
 
         return new_parameter
 
-    def calculate_kl_divergence(self, pk, qk):
+    def avg_kl_divergence(self, state_transitions, new_policy_parameters, old_policy_parameters):
         """
         S = sum(pk * log(pk / qk), axis=0)
         :return: 
+
+        for each starting_state in state_transitions: 
+            * Calculate the probability of actions using old policy parameter
+            * Calculate the probability of actions using new policy parameter
+            * Calculate KL-Divergence for state
+            * Add both to sum
+        divide sum by num of states 
+        return average KL-Divergence
         """
-        pk_norm = np.array(self.normalize(pk))
-        qk_norm = np.array(self.normalize(qk))
-
-        # the normalised arrays may have negative number. So I just clip it to 0. # TODO: CHECK WITH YIMING.
-        # OR SHOULD I NORMALISE THE VALUES TO BE BETWEEN [0, 1] AND THEN CALCULATE THE PROBABILITY DISTRIBUTION
-        # pk_norm = pk_norm.clip(min=0)
-        # pk_norm = qk_norm.clip(min=0)
         kl_sum = 0
-        for i in range(len(pk)):
-            if math.isnan(pk_norm[i] * np.log(math.fabs(pk_norm[i])/math.fabs((qk_norm[i] + self.tiny)) + self.tiny)):
-                print("KL divergence resulted in nan. Normalised parameter is probably negative")
-            kl_sum += pk_norm[i] * np.log(math.fabs(pk_norm[i])/math.fabs((qk_norm[i] + self.tiny)) + self.tiny)
+        for state_transition in state_transitions:
+            self.set_policy_parameters(new_policy_parameters)
+            new_action_distribution = self.get_action(self.feature.phi(state_transition.get_start_state()))
+            self.set_policy_parameters(old_policy_parameters)
+            old_action_distribution = self.get_action(self.feature.phi(state_transition.get_start_state()))
+            kl_sum += stats.entropy(new_action_distribution, old_action_distribution)
 
-        return kl_sum
-
-
-    @staticmethod
-    def normalize(raw):
-        norm = [float(i) / sum(raw) for i in raw]
-        return norm
+        return kl_sum/len(state_transitions)
