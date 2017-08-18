@@ -10,17 +10,16 @@ state = (position, velocity)
         self.max_position = 0.6
         self.max_speed = 0.07
         min speed = -self.max_speed = -0.07
-         
-TODO: 
+
+TODO:
 Add Cartpole settings
 """
 
 
 class NeatEMAgent(object):
-    def __init__(self, dimension, num_actions):
+    def __init__(self, dimension, num_actions, state_length, feature_size):
         self.dimension = dimension
-        # self.feature = self.__create_discretised_feature([5, 5], 2, [-1.2, -0.07], [0.6, 0.07])
-        self.feature = self.__create_discretised_feature(4, 16)
+        self.feature = self.__create_discretised_feature(state_length, feature_size)
         self.valueFunction = ValueFunction(dimension)
         self.policy = SoftmaxPolicy(dimension, num_actions, self.feature)
         self.fitness = 0
@@ -64,7 +63,7 @@ class NeatEMAgent(object):
 
     def update_policy_function(self, trajectories, state_transitions):
         derror_squared = self.__d_error_squared(trajectories)
-        # update policy
+        # update policy parameter
         self.policy.update_parameters(derror_squared, state_transitions)
 
     def __d_error_squared(self, trajectories):
@@ -79,36 +78,42 @@ class NeatEMAgent(object):
         # first copy the policy parameters
         original_policy_parameters = self.policy.get_policy_parameters()
 
+        # for each parameter component
         for i in range(len(original_policy_parameters)):
+            # maintain positive delta and negative delta error functions
             error_func_positive_delta = np.zeros(shape=(self.policy.num_actions * self.dimension), dtype=float)
             error_func_negative_delta = np.zeros(shape=(self.policy.num_actions * self.dimension), dtype=float)
 
             new_parameters_positive_delta = np.copy(original_policy_parameters)
             new_parameters_negative_delta = np.copy(original_policy_parameters)
 
+            # add/subtract delta to both positive delta and negative delta funcion parameters
             new_parameters_positive_delta[i] = new_parameters_positive_delta[i] + delta
             new_parameters_negative_delta[i] = new_parameters_negative_delta[i] - delta
 
+            # calculate the error functions
             for j, (_, __, state_transitions) in enumerate(trajectories):
                 for state_transition in state_transitions:
                     phi_old = self.feature.phi(state_transition.get_start_state())
 
-                    # set theta + delta and calculate dlogpi_positive_delta
+                    # set theta + delta and calculate dlogpi for positive delta case
                     self.policy.set_policy_parameters(new_parameters_positive_delta)
                     dlogpi_positive_delta = self.policy.dlogpi(phi_old, state_transition.get_action())
 
-                    # set theta - delta and calculate dlogpi_negative_delta
+                    # set theta - delta and calculate dlogpi for negative delta case
                     self.policy.set_policy_parameters(new_parameters_negative_delta)
                     dlogpi_negative_delta = self.policy.dlogpi(phi_old, state_transition.get_action())
 
-                    # calculate td_error
+                    # calculate td_error. TD Error calculcate is independent of policy
                     phi_new = self.feature.phi(state_transition.get_end_state())
                     td_error = state_transition.get_reward() + self.gamma * self.valueFunction.get_value(
                         phi_new) - self.valueFunction.get_value(phi_old)
 
+                    # Multiply dlogpi with td error for positive delta and negative delta functions
                     dlogpi_positive_delta *= td_error
                     dlogpi_negative_delta *= td_error
 
+                    # added to error function positive and error function negative
                     error_func_positive_delta += dlogpi_positive_delta
                     error_func_negative_delta += dlogpi_negative_delta
 
@@ -116,7 +121,10 @@ class NeatEMAgent(object):
             error_func_negative_delta /= len(trajectories)
 
             '''
-            now calculate scalar approximation
+            now calculate scalar approximation.
+            e(theta + delta) <==> error_func_negative_delta
+            e(theta - delta) <==> error_func_negative_delta
+
             e(theta + delta)^Transpose dot e(theta+delta) - e(theta-delta)^Transpose dot e(theta-delta)/(2*delta)
             '''
             error_derivative = np.dot(np.transpose(error_func_positive_delta), error_func_positive_delta) - np.dot(
@@ -124,23 +132,11 @@ class NeatEMAgent(object):
             error_derivative /= (2 * delta)
             d_error_squared[i] = error_derivative
 
+        # set policy parameter to its original value
         self.policy.set_policy_parameters(original_policy_parameters)
+
+        # Print the normalised update to see the energy of d_error_squared
+        max_value = max(d_error_squared) + 1e-10  # Adding tiny value to avoid potential divide by zero
+        norm = [float(k)/max_value for k in d_error_squared]
+        print(norm)
         return d_error_squared
-
-
-class DeltaPolicy(object):
-
-    def __init__(self, dimension):
-        self.component1 = 0
-        self.component2 = np.zeros(dimension, dtype=float)
-        self.delta = np.zeros(dimension, dtype=float)
-        self.state_transition_count = 0.0
-
-    def add(self, component1, component2):
-        self.component1 += component1
-        self.component2 += component2
-        self.state_transition_count += 1.0
-
-    def calculate_delta(self):
-        self.delta = np.dot(self.component1, self.component2)
-

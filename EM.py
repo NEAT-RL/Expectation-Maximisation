@@ -55,7 +55,9 @@ class NeatEM(object):
 
     def __initialise_agents(self):
         self.agent = NeatEMAgent(props.getint('neuralnet', 'dimension'),
-                                 props.getint('policy', 'num_actions'))
+                                 props.getint('policy', 'num_actions'),
+                                 props.getint('state', 'state_length'),
+                                 props.getint('state', 'feature_size'))
 
     def __initialise_trajectories(self, num_trajectories):
         '''
@@ -109,8 +111,8 @@ class NeatEM(object):
         """
         Generate trajectory.
         Insert into Trajectories.
-        Select best trajectory and perform policy update 
-        :return: 
+        Select best trajectory and perform policy update
+        :return:
         """
         tstart = datetime.now()
 

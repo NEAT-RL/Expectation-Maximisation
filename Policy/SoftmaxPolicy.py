@@ -5,14 +5,12 @@ import logging
 from datetime import datetime
 import scipy.stats as stats
 
-logging.basicConfig(filename='log/policy-debug-' + str(datetime.now()) + '.log', level=logging.DEBUG)
 logger = logging.getLogger()
 
 
 class SoftmaxPolicy(object):
     def __init__(self, dimension, num_actions, feature):
         self.dimension = dimension
-        self.parameters = []
         self.feature = feature
         self.num_actions = num_actions
         self.sigma = 1.0
@@ -22,15 +20,10 @@ class SoftmaxPolicy(object):
         self.initialise_parameters()
 
     def get_policy_parameters(self):
-        return np.concatenate((self.parameters), axis=0)
+        return np.copy(self.parameters)
 
     def set_policy_parameters(self, parameters, dimension=1):
-        if dimension == 1:
-            self.parameters = np.split(parameters, self.num_actions)
-        elif dimension == self.num_actions:
-            self.parameters = parameters
-        else:
-            raise Exception("dimension must be either 1 or number of actions")
+        self.parameters = parameters
 
     def initialise_parameters(self):
         """
@@ -38,10 +31,10 @@ class SoftmaxPolicy(object):
          - Zero vectors
          - Random vectors (capped to [-10, 10] for example)
          - Maximising log likelihood etc
-        :return: 
+        :return:
         """
         # self.parameters = np.random.uniform(low=self.tiny, high=1, size=(self.num_actions, self.dimension))
-        self.parameters = np.zeros(shape=(self.num_actions, self.dimension), dtype=float)
+        self.parameters = np.zeros(shape=(self.num_actions * self.dimension), dtype=float)
         # self.parameters.fill(self.tiny)
 
     def get_num_actions(self):
@@ -50,15 +43,16 @@ class SoftmaxPolicy(object):
     def get_action(self, state_feature):
         '''
         Perform dot product between state feature and policy parameter and return sample from the normal distribution
-        :param state_feature: 
-        :return: 
+        :param state_feature:
+        :return:
         '''
 
         # for each policy parameter (representing each action)
         # calculate phi /cdot theta
         # put these into array and softmax and compute random sample
         action_probabilities = []
-        for i, parameter in enumerate(self.parameters):
+        policy_parameters = np.split(self.parameters, self.num_actions)
+        for i, parameter in enumerate(policy_parameters):
             mu = np.dot(state_feature, parameter)
             action_probabilities.append(mu)
 
@@ -70,7 +64,7 @@ class SoftmaxPolicy(object):
         softmax = np.exp(action_probabilities) / np.sum(np.exp(action_probabilities), axis=0)
 
         p = random.uniform(0, 1)
-        if p < 0.02:
+        if p < 0.05:
             chosen_policy_index = random.randint(0, len(softmax) - 1)
         else:
             chosen_policy_index = np.argmax(softmax)
@@ -79,45 +73,45 @@ class SoftmaxPolicy(object):
 
     def dlogpi(self, state_feature, action):
         """
-        Add delta to all of the 3 policy parameters. one component at a time
+        Add delta to policy parameters. one component at a time.
         Then calculcate the probability of producing the action
-        Then calculcate paraderivative
-        
-        :param state: 
-        :param action: 
-        :return: 
+
+        :param state:
+        :param action:
+        :return:
         """
-        original_parameters = np.concatenate((self.parameters), axis=0)
-        
+        original_parameters = np.copy(self.parameters)
+
         para_derivatives = np.zeros(len(original_parameters), dtype=float)
-        
+        delta = 0.001
         for i in range(len(original_parameters)):
             new_parameters = np.copy(original_parameters)
-            new_parameters[i] = new_parameters[i] - 0.00001
-        
-            self.parameters = np.split(new_parameters, self.num_actions)
+            new_parameters[i] = new_parameters[i] - delta
+
+            self.set_policy_parameters(new_parameters)
             _, action_distribution = self.get_action(state_feature)
             prev_prob = action_distribution[action]
-        
-            new_parameters[i] = new_parameters[i] + 0.00001 * 2
-            self.parameters = np.split(new_parameters, self.num_actions)
+
+            new_parameters[i] = new_parameters[i] + 0.001 * 2
+            self.set_policy_parameters(new_parameters)
             _, action_distribution = self.get_action(state_feature)
             after_prob = action_distribution[action]
-        
-            para_derivatives[i] = (after_prob - prev_prob) / (2. * 0.00001)
-        
+
+            para_derivatives[i] = (np.log(after_prob + self.tiny) - np.log(prev_prob + self.tiny)) / (2. * 0.001)
+
         # Replace parameters with the original parameters
-        self.parameters = np.split(original_parameters, self.num_actions)
-        
+        self.set_policy_parameters(original_parameters)
+
         return para_derivatives  # return new parameters
 
     def update_parameters(self, d_error_squared, state_transitions):
-        current_policy_parameters = np.concatenate((self.parameters), axis=0)
+        current_policy_parameters = np.copy(self.parameters)
 
         new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared)
 
-        learning_rate = self.default_learning_rate
         self.set_policy_parameters(new_policy_parameters)
+        # Perform KL Divergence check
+        # learning_rate = self.default_learning_rate
         # for j in range(5):
         #     kl_difference = self.avg_kl_divergence(state_transitions, new_policy_parameters, current_policy_parameters)
         #     if kl_difference < self.kl_threshold:
@@ -145,14 +139,14 @@ class SoftmaxPolicy(object):
     def avg_kl_divergence(self, state_transitions, new_policy_parameters, old_policy_parameters):
         """
         S = sum(pk * log(pk / qk), axis=0)
-        :return: 
+        :return:
 
-        for each starting_state in state_transitions: 
+        for each starting_state in state_transitions:
             * Calculate the probability of actions using old policy parameter
             * Calculate the probability of actions using new policy parameter
             * Calculate KL-Divergence for state
             * Add both to sum
-        divide sum by num of states 
+        divide sum by num of states
         return average KL-Divergence
         """
         kl_sum = 0
