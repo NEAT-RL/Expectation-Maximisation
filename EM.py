@@ -153,7 +153,7 @@ class EM(object):
             # calculate probability of the action where policy action = action
             state_features = self.agent.feature.phi(state_transition.get_start_state())
             _, actions_distribution = self.agent.get_policy().get_action(state_features)
-            best_trajectory_prob += np.log(actions_distribution[state_transition.get_action()])
+            best_trajectory_prob += np.log(actions_distribution[state_transition.get_action()] + 1e-10)
 
         logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
         logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
