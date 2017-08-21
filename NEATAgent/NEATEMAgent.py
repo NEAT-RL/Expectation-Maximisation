@@ -87,7 +87,7 @@ class NeatEMAgent(object):
             new_parameters_positive_delta = np.copy(original_policy_parameters)
             new_parameters_negative_delta = np.copy(original_policy_parameters)
 
-            # add/subtract delta to both positive delta and negative delta funcion parameters
+            # add/subtract delta to both positive delta and negative delta function parameters
             new_parameters_positive_delta[i] = new_parameters_positive_delta[i] + delta
             new_parameters_negative_delta[i] = new_parameters_negative_delta[i] - delta
 

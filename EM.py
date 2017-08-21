@@ -46,31 +46,30 @@ class StateTransition(object):
         return self.start_state, self.action, self.reward, self.end_state
 
 
-class NeatEM(object):
+class EM(object):
     def __init__(self):
         self.trajectories = []
-        self.__initialise_trajectories(props.getint('initialisation', 'trajectory_size'))
+        self.__initialise_trajectories()
         self.__initialise_agents()
-        self.best_agents = []
 
     def __initialise_agents(self):
-        self.agent = NeatEMAgent(props.getint('neuralnet', 'dimension'),
+        self.agent = NeatEMAgent(props.getint('feature', 'dimension'),
                                  props.getint('policy', 'num_actions'),
                                  props.getint('state', 'state_length'),
                                  props.getint('state', 'feature_size'))
 
-    def __initialise_trajectories(self, num_trajectories):
-        '''
+    def __initialise_trajectories(self):
+        """
         Initialise trajectories of size: 'size'.
         Each trajectory we store N number of state transitions. (state, reward, next state, action)
-        :param num_trajectories:
+        :param:
         :return:
-        '''
-        logger.debug("Initialising trajectories")
+        """
+        logger.debug("Creating trajectories for first time...")
         t_start = datetime.now()
-
-        max_steps = props.getint('initialisation', 'max_steps')
-        step_size = props.getint('initialisation', 'step_size')
+        num_trajectories = props.getint('initialisation', 'trajectory_size')
+        max_steps = props.getint('train', 'max_steps')
+        step_size = props.getint('train', 'step_size')
         for i in range(num_trajectories):
             trajectory = []
             state = env.reset()
@@ -98,24 +97,29 @@ class NeatEM(object):
                 if done:
                     terminal_reached = True
 
+            # Insert trajectory into
             # we have to insert timestamp as second entry so that we can order trajectories with the same reward count
             heapq.heappush(self.trajectories, (total_reward, datetime.now(), trajectory))
         logger.debug("Finished: Creating trajectories. Time taken: %f", (datetime.now() - t_start).total_seconds())
 
-    def execute_algorithm(self, generations):
-        for i in range(generations):
-            logger.debug("Generation %d", i)
-            self.fitness_function()
+    def execute_algorithm(self):
+        iterations = props.getint('train', 'iterations')
+        for i in range(iterations):
+            logger.debug("Running iteration %d", i)
+            t_start = datetime.now()
+            self.agent.fitness = self.fitness_function()
+            logger.debug("Completed Iteration %d. Time taken: %f", i, (datetime.now() - t_start).total_seconds())
+            logger.debug("Agent fitness: %f", self.agent.fitness)
+            if i % 200 == 0:
+                test_agent(self.agent, i)
 
     def fitness_function(self):
         """
         Generate trajectory.
         Insert into Trajectories.
         Select best trajectory and perform policy update
-        :return:
+        :return fitness of agent:
         """
-        tstart = datetime.now()
-
         total_reward, new_state_transitions = self.generate_new_trajectory()
 
         heapq.heappush(self.trajectories, (total_reward, datetime.now(), new_state_transitions))
@@ -123,9 +127,10 @@ class NeatEM(object):
         # strip weak trajectories from trajectory_set
         self.trajectories = heapq.nlargest(props.getint('initialisation', 'trajectory_size'), self.trajectories)
 
+        # Collect set of state transitions
         state_transitions = set()
         for i in range(len(self.trajectories)):
-            state_transitions = state_transitions | set(self.trajectories[i][2])  # Collect set of state transitions
+            state_transitions = state_transitions | set(self.trajectories[i][2])
 
         experience_replay = props.getint('evaluation', 'experience_replay')
         random_state_transitions = random.sample(state_transitions, experience_replay)
@@ -150,20 +155,14 @@ class NeatEM(object):
             _, actions_distribution = self.agent.get_policy().get_action(state_features)
             best_trajectory_prob += np.log(actions_distribution[state_transition.get_action()])
 
-        self.agent.fitness = best_trajectory_prob
-
-        logger.debug("Agent fitness: %f", self.agent.fitness)
         logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
         logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
-
-        # test agent
-        test_agent(self.agent)
-        logger.debug("Completed Generation. Time taken: %f", (datetime.now() - tstart).total_seconds())
+        return best_trajectory_prob
 
     def generate_new_trajectory(self):
         logger.debug("Generating new trajectory")
-        max_steps = props.getint('initialisation', 'max_steps')
-        step_size = props.getint('initialisation', 'step_size')
+        max_steps = props.getint('train', 'max_steps')
+        step_size = props.getint('train', 'step_size')
 
         # perform a rollout
         state = env.reset()
@@ -172,7 +171,6 @@ class NeatEM(object):
         total_reward = 0
         new_trajectory = []
         while not terminal_reached and steps < max_steps:
-            # env.render()
             state_features = self.agent.feature.phi(state)
             # get recommended action and the action distribution using policy
             action, actions_distribution = self.agent.get_policy().get_action(state_features)
@@ -198,11 +196,11 @@ class NeatEM(object):
         return total_reward, new_trajectory
 
 
-def test_agent(agent):
+def test_agent(agent, iteration_count):
     t_start = datetime.now()
 
     test_episodes = props.getint('test', 'test_episodes')
-    step_size = props.getint('initialisation', 'step_size')
+    step_size = props.getint('test', 'step_size')
 
     total_steps = 0.0
     total_rewards = 0.0
@@ -211,7 +209,8 @@ def test_agent(agent):
         terminal_reached = False
         steps = 0
         while not terminal_reached:
-            # env.render() # TODO: render if passed as argument (should make this a program argument)
+            if display_game:
+                env.render()
             state_features = agent.feature.phi(state)
             action, actions_distribution = agent.get_policy().get_action(state_features)
             state, reward, done, info = env.step(action)
@@ -233,8 +232,8 @@ def test_agent(agent):
     average_rewards_per_episodes = total_rewards / test_episodes
 
     # save this to file
-    entry = [average_steps_per_episodes, average_rewards_per_episodes]
-    with open(r'agent_evaluation.csv', 'a') as f:
+    entry = [iteration_count, average_steps_per_episodes, average_rewards_per_episodes]
+    with open(r'agent_evaluation-{0}.csv'.format(time), 'a') as f:
         writer = csv.writer(f)
         writer.writerow(entry)
 
@@ -242,80 +241,49 @@ def test_agent(agent):
 
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser(description=None)
     parser.add_argument('env_id', nargs='?', default='CartPole-v0', help='Select the environment to run')
+    parser.add_argument('display', nargs='?', default='false', help='Show display of game. true or false')
     args = parser.parse_args()
 
+    # Call `undo_logger_setup` if you want to undo Gym's logger setup
+    # and configure things manually. (The default should be fine most
+    # of the time.)
     gym.undo_logger_setup()
-    logging.basicConfig(filename='log/debug-'+str(datetime.now())+'.log', level=logging.DEBUG)
+    time = datetime.now().strftime("%Y%m%d-%H:%M:%S")
+    logging.basicConfig(filename='log/debug-{0}.log'.format(time),
+                        level=logging.DEBUG, format='[%(asctime)s] %(message)s')
     logger = logging.getLogger()
-    logging.Formatter('[%(asctime)s] %(message)s')
+    formatter = logging.Formatter('[%(asctime)s] %(message)s')
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    # You can set the level to logging.DEBUG or logging.WARN if you
+    # want to change the amount of output.
+    logger.setLevel(logging.DEBUG)
+
     env = gym.make(args.env_id)
 
-    # logger.debug(env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'))
-    # env.spec.tags['wrapper_config.TimeLimit.max_episode_steps'] = 200
-    # logger.debug(env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'))
-    # env._max_episode_steps = 200
-
-    # env = env.env
     logger.debug("action space: %s", env.action_space)
     logger.debug("observation space: %s", env.observation_space)
 
-
-    # You provide the directory to write to (can be an existing
-    # directory, including one with existing data -- all monitor files
-    # will be namespaced). You can also dump to a tempdir if you'd
-    # like: tempfile.mkdtemp().
-    # outdir = '~/tmp/neat-em-data/' + str(datetime.now())
-    # env = wrappers.Monitor(env, directory=outdir, force=True)
+    # load properties file
     local_dir = os.path.dirname(__file__)
-    # load properties
     logger.debug("Loading Properties File")
     props = configparser.ConfigParser()
     prop_path = os.path.join(local_dir, 'properties/{0}/neatem_properties.ini'.format(env.spec.id))
     props.read(prop_path)
     logger.debug("Finished: Loading Properties File")
 
-    # Load the config file, which is assumed to live in
-    # the same directory as this script.
+    # initialise experiment
+    experiment = EM()
 
-    config_path = os.path.join(local_dir, 'properties/{0}/config'.format(env.spec.id))
-    config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation,
-                         config_path)
-
-    population = NeatEM()
-
-    # Run until the winner from a generation is able to solve the environment
-    # or the user interrupts the process.
+    display_game = True if args.display == 'true' else False
     try:
-        # Run for 5 generations
-        population.execute_algorithm(props.getint('neuralnet', 'generation'))
-
-        # Generate test results
-        # outdir = 'videos/tmp/neat-em-data/{0}-{1}'.format(env.spec.id, str(datetime.now()))
-        # env = wrappers.Monitor(env, directory=outdir, force=True)
-        # test_agent(population.agent)
-
-        # visualize.plot_stats(population.stats, ylog=False, view=False, filename="fitness.svg")
-
-        # mfs = sum(population.stats.get_fitness_mean()[-20:]) / 20.0
-        # logger.debug("Average mean fitness over last 20 generations: %f", mfs)
-
-        # mfs = sum(population.stats.get_fitness_stat(min)[-20:]) / 20.0
-        # logger.debug("Average min fitness over last 20 generations: %f", mfs)
-
-        # Use the 10 best genomes seen so far
-        # best_genomes = population.stats.best_unique_genomes(10)
-
-        # save_best_genomes(best_genomes, True)
-
+        experiment.execute_algorithm()
     except KeyboardInterrupt:
         logger.debug("User break.")
-        # save the best neural network or save top 5?
-        # best_genomes = population.stats.best_unique_genomes(5)
-
-        # save_best_genomes(best_genomes, False)
 
     env.close()
 
