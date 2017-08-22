@@ -63,11 +63,18 @@ class SoftmaxPolicy(object):
 
         softmax = np.exp(action_probabilities) / np.sum(np.exp(action_probabilities), axis=0)
 
-        p = random.uniform(0, 1)
-        if p < 0.05:
-            chosen_policy_index = random.randint(0, len(softmax) - 1)
-        else:
-            chosen_policy_index = np.argmax(softmax)
+        running_total = 0.0
+        total = np.zeros(shape=self.num_actions)
+        for i, value in enumerate(softmax):
+            running_total += value
+            total[i] = running_total
+
+        rand = random.uniform(0, 1)
+        chosen_policy_index = 0
+        for i in range(len(total)):
+            if total[i] > rand:
+                chosen_policy_index = i
+                break
 
         return chosen_policy_index, softmax
 
@@ -76,7 +83,7 @@ class SoftmaxPolicy(object):
         Add delta to policy parameters. one component at a time.
         Then calculcate the probability of producing the action
 
-        :param state:
+        :param state_feature:
         :param action:
         :return:
         """
