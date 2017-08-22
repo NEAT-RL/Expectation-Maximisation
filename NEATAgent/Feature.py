@@ -22,13 +22,13 @@ class DiscretizedFeature(object):
 
         return featureData
         '''
-        featureData = np.zeros(self.output_dimension, dtype=float)
+        feature_data = np.zeros(self.output_dimension, dtype=float)
         polynomial_dimension = self.output_dimension // self.input_dimension
         for i in range(polynomial_dimension):
             for j in range(self.input_dimension):
-                featureData[polynomial_dimension * i + j] = pow(state[j], i + 1)
+                feature_data[polynomial_dimension * i + j] = pow(state[j], i + 1)
         
-        return featureData
+        return feature_data
 
     @staticmethod
     def discretise(value, min_value, max_value):
