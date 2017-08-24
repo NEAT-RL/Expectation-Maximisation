@@ -1,6 +1,6 @@
 from __future__ import print_function
 
-import multiprocessing
+from multiprocessing import Pool
 import os
 import pickle
 import argparse
@@ -68,39 +68,44 @@ class EM(object):
         logger.debug("Creating trajectories for first time...")
         t_start = datetime.now()
         num_trajectories = props.getint('initialisation', 'trajectory_size')
+
+        pool = Pool(processes=props.getint('multiprocess', 'num_processes'))
+        results = [pool.apply_async(EM.initialise_trajectory) for x in range(num_trajectories)]
+        results = [trajectory.get() for trajectory in results]
+        self.trajectories = results
+        logger.debug("Finished: Creating trajectories. Time taken: %f", (datetime.now() - t_start).total_seconds())
+
+    @staticmethod
+    def initialise_trajectory():
         max_steps = props.getint('train', 'max_steps')
         step_size = props.getint('train', 'step_size')
-        for i in range(num_trajectories):
-            trajectory = []
-            state = env.reset()
-            terminal_reached = False
-            steps = 0
-            total_reward = 0
-            while not terminal_reached and steps < max_steps:
-                # sample action from the environment
-                action = env.action_space.sample()
-                next_state, reward, done, info = env.step(action)
+        trajectory = []
+        state = env.reset()
+        terminal_reached = False
+        steps = 0
+        total_reward = 0
+        while not terminal_reached and steps < max_steps:
+            # sample action from the environment
+            action = env.action_space.sample()
+            next_state, reward, done, info = env.step(action)
 
-                for x in range(step_size - 1):
-                    if done:
-                        terminal_reached = True
-                        break
-                    next_state, reward2, done, info = env.step(action)
-                    reward += reward2
-
-                state_transition = StateTransition(state, action, reward, next_state)
-                # insert state transition to the trajectory
-                trajectory.append(state_transition)
-                total_reward += reward
-                state = next_state
-                steps += 1
+            for x in range(step_size - 1):
                 if done:
                     terminal_reached = True
+                    break
+                next_state, reward2, done, info = env.step(action)
+                reward += reward2
 
-            # Insert trajectory into
-            # we have to insert timestamp as second entry so that we can order trajectories with the same reward count
-            heapq.heappush(self.trajectories, (total_reward, datetime.now(), trajectory))
-        logger.debug("Finished: Creating trajectories. Time taken: %f", (datetime.now() - t_start).total_seconds())
+            state_transition = StateTransition(state, action, reward, next_state)
+            # insert state transition to the trajectory
+            trajectory.append(state_transition)
+            total_reward += reward
+            state = next_state
+            steps += 1
+            if done:
+                terminal_reached = True
+
+        return total_reward, datetime.now(), trajectory
 
     def execute_algorithm(self):
         iterations = props.getint('train', 'iterations')
@@ -108,10 +113,10 @@ class EM(object):
             logger.debug("Running iteration %d", i)
             t_start = datetime.now()
             self.agent.fitness = self.fitness_function()
-            logger.debug("Completed Iteration %d. Time taken: %f", i, (datetime.now() - t_start).total_seconds())
             logger.debug("Agent fitness: %f", self.agent.fitness)
             if i % 200 == 0:
                 test_agent(self.agent, i)
+            logger.debug("Completed Iteration %d. Time taken: %f", i, (datetime.now() - t_start).total_seconds())
 
     def fitness_function(self):
         """
@@ -122,7 +127,7 @@ class EM(object):
         """
         total_reward, new_state_transitions = self.generate_new_trajectory()
 
-        heapq.heappush(self.trajectories, (total_reward, datetime.now(), new_state_transitions))
+        self.trajectories.append((total_reward, datetime.now(), new_state_transitions))
 
         # strip weak trajectories from trajectory_set
         self.trajectories = heapq.nlargest(props.getint('initialisation', 'trajectory_size'), self.trajectories)
@@ -153,6 +158,9 @@ class EM(object):
             # calculate probability of the action where policy action = action
             state_features = self.agent.feature.phi(state_transition.get_start_state())
             _, actions_distribution = self.agent.get_policy().get_action(state_features)
+            if actions_distribution[state_transition.get_action()] <= 0:
+                logger.error("Negative Probabilities!!!")
+                logger.error(actions_distribution)
             best_trajectory_prob += np.log(actions_distribution[state_transition.get_action()] + 1e-10)
 
         logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
@@ -200,15 +208,18 @@ def test_agent(agent, iteration_count):
     t_start = datetime.now()
 
     test_episodes = props.getint('test', 'test_episodes')
+    max_steps = props.getint('test', 'max_steps')
     step_size = props.getint('test', 'step_size')
 
     total_steps = 0.0
     total_rewards = 0.0
+    # Perform testing in parallel
+
     for i in range(test_episodes):
         state = env.reset()
         terminal_reached = False
         steps = 0
-        while not terminal_reached:
+        while not terminal_reached and steps < max_steps:
             if display_game:
                 env.render()
             state_features = agent.feature.phi(state)

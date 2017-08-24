@@ -22,7 +22,7 @@ class SoftmaxPolicy(object):
     def get_policy_parameters(self):
         return np.copy(self.parameters)
 
-    def set_policy_parameters(self, parameters, dimension=1):
+    def set_policy_parameters(self, parameters):
         self.parameters = parameters
 
     def initialise_parameters(self):
@@ -76,7 +76,7 @@ class SoftmaxPolicy(object):
                 chosen_policy_index = i
                 break
 
-        return chosen_policy_index, softmax
+        return chosen_policy_index, softmax  # another possibility is to be greedy and do np.argmax(softmax), softmax
 
     def dlogpi(self, state_feature, action):
         """
