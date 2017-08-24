@@ -115,7 +115,7 @@ class EM(object):
             t_start = datetime.now()
             self.agent.fitness = self.fitness_function()
             logger.debug("Agent fitness: %f", self.agent.fitness)
-            if i % 200 == 0:
+            if i % 10 == 0:
                 test_agent(self.agent, i)
             logger.debug("Completed Iteration %d. Time taken: %f", i, (datetime.now() - t_start).total_seconds())
 
@@ -127,6 +127,7 @@ class EM(object):
         :return fitness of agent:
         """
         total_reward, new_state_transitions = self.generate_new_trajectory()
+        logger.debug("New trajectory reward: %d", total_reward)
 
         self.trajectories.append((total_reward, datetime.now(), new_state_transitions))
 
