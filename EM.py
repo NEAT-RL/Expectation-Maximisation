@@ -47,7 +47,9 @@ class StateTransition(object):
 
 
 class EM(object):
-    def __init__(self):
+
+    def __init__(self, pool):
+        self.pool = pool
         self.trajectories = []
         self.__initialise_trajectories()
         self.__initialise_agents()
@@ -69,8 +71,7 @@ class EM(object):
         t_start = datetime.now()
         num_trajectories = props.getint('initialisation', 'trajectory_size')
 
-        pool = Pool(processes=props.getint('multiprocess', 'num_processes'))
-        results = [pool.apply_async(EM.initialise_trajectory) for x in range(num_trajectories)]
+        results = [self.pool.apply_async(EM.initialise_trajectory) for x in range(num_trajectories)]
         results = [trajectory.get() for trajectory in results]
         self.trajectories = results
         logger.debug("Finished: Creating trajectories. Time taken: %f", (datetime.now() - t_start).total_seconds())
@@ -146,7 +147,7 @@ class EM(object):
 
         # update policy parameter
         logger.debug("Updating policy function")
-        self.agent.update_policy_function(self.trajectories, state_transitions)
+        self.agent.update_policy_func tion(self.trajectories, state_transitions, self.pool)
 
         # now assign fitness to each individual/genome
         # fitness is the log prob of following the best trajectory
@@ -288,15 +289,17 @@ if __name__ == '__main__':
     logger.debug("Finished: Loading Properties File")
 
     # initialise experiment
-    experiment = EM()
+    pool = Pool(processes=props.getint('multiprocess', 'num_processes'))
+    experiment = EM(pool)
 
     display_game = True if args.display == 'true' else False
     try:
         experiment.execute_algorithm()
     except KeyboardInterrupt:
         logger.debug("User break.")
-
-    env.close()
+    finally:
+        pool.terminate()
+        env.close()
 
     # Upload to the scoreboard. We could also do this from another
     # logger.info("Successfully ran RandomAgent. Now trying to upload results to the scoreboard. If it breaks, you can always just try re-uploading the same results.")

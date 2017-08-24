@@ -73,20 +73,20 @@ class NeatEMAgent(object):
         delta_omega /= len(state_transitions)
         self.valueFunction.update_parameters(delta_omega)
 
-    def update_policy_function(self, trajectories, state_transitions):
-        derror_squared = self.d_error_squared(trajectories)
+    def update_policy_function(self, trajectories, state_transitions, pool):
+        derror_squared = self.d_error_squared(trajectories, pool)
         # update policy parameter
         self.policy.update_parameters(derror_squared, state_transitions)
 
-    def d_error_squared(self, trajectories):
-        '''
+    def d_error_squared(self, trajectories, pool):
+        """
         For each parameter in error squared function:
            e(theta + delta)Transpose cdot e(theta+delta) - e(theta-delta)/(2*delta)
-        '''
+        """
         # first copy the policy parameters
         original_policy_parameters = self.policy.get_policy_parameters()
         # Perform Parallel computation of numeric approximation of error squared function
-        pool = Pool(processes=3)
+        # pool = Pool(processes=3)
         results = [
             pool.apply_async(self.approximate_d_error_squared, args=(x, trajectories, original_policy_parameters)) for x
             in range(len(original_policy_parameters))]
