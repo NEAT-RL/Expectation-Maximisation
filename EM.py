@@ -147,7 +147,7 @@ class EM(object):
 
         # update policy parameter
         logger.debug("Updating policy function")
-        self.agent.update_policy_func tion(self.trajectories, state_transitions, self.pool)
+        self.agent.update_policy_function(self.trajectories, state_transitions, self.pool)
 
         # now assign fitness to each individual/genome
         # fitness is the log prob of following the best trajectory
