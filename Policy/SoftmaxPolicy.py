@@ -62,7 +62,7 @@ class SoftmaxPolicy(object):
             action_probabilities[i] = action_probabilities[i] - max_value
 
         softmax = np.exp(action_probabilities) / np.sum(np.exp(action_probabilities), axis=0)
-        '''
+
         running_total = 0.0
         total = np.zeros(shape=self.num_actions)
         for i, value in enumerate(softmax):
@@ -77,8 +77,6 @@ class SoftmaxPolicy(object):
                 break
 
         return chosen_policy_index, softmax  # another possibility is to be greedy and do np.argmax(softmax), softmax
-        '''
-        return np.argmax(softmax), softmax
 
     def dlogpi(self, state_feature, action):
         """
