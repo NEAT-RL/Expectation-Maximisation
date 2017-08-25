@@ -140,7 +140,7 @@ class EM(object):
             state_transitions = state_transitions | set(self.trajectories[i][2])
 
         experience_replay = props.getint('evaluation', 'experience_replay')
-        random_state_transitions = random.sample(state_transitions, experience_replay)
+        random_state_transitions = random.sample(state_transitions, experience_replay) if len(state_transitions) > experience_replay else state_transitions
 
         # update value function
         logger.debug("Updating value function")
@@ -290,7 +290,7 @@ if __name__ == '__main__':
     logger.debug("Finished: Loading Properties File")
 
     # initialise experiment
-    pool = Pool(processes=props.getint('multiprocess', 'num_processes'))
+    pool = Pool(processes=props.getint('multiprocess','num_processes'))
     experiment = EM(pool)
 
     display_game = True if args.display == 'true' else False
