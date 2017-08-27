@@ -290,7 +290,7 @@ if __name__ == '__main__':
     logger.debug("Finished: Loading Properties File")
 
     # initialise experiment
-    pool = Pool(processes=props.getint('multiprocess','num_processes'))
+    pool = Pool()
     experiment = EM(pool)
 
     display_game = True if args.display == 'true' else False
