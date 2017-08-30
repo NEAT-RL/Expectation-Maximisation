@@ -84,9 +84,8 @@ class NeatEMAgent(object):
         # first copy the policy parameters
         original_policy_parameters = self.policy.get_policy_parameters()
         # Perform Parallel computation of numeric approximation of error squared function
-        results = [pool.apply_async(self.approximate_d_error_squared,
-                                    args=(x, random_state_transitions, original_policy_parameters)
-                                    )
+        results = [pool.apply_async(
+            self.approximate_d_error_squared, args=(x, random_state_transitions, original_policy_parameters))
                    for x in range(len(original_policy_parameters))]
         results2 = [i.get() for i in results]
         d_error_squared = [value[1] for value in sorted(results2)]  # collect the error derivative in sorted order based on index
@@ -97,9 +96,9 @@ class NeatEMAgent(object):
         self.policy.update_parameters(d_error_squared, all_state_transitions)
 
     def approximate_d_error_squared(self, index, random_state_transitions, original_policy_parameters):
-        delta = 0.001
+        delta = 0.01
         # make new policy with original_policy_parameters
-        policy = SoftmaxPolicy(self.dimension, self.num_actions, self.feature)  # feature is not needed if KL divergence is unused
+        policy = SoftmaxPolicy(self.dimension, self.num_actions, self.feature, self.policy.is_greedy)  # feature is not needed if KL divergence is unused
         policy.set_policy_parameters(original_policy_parameters)
 
         # maintain positive delta and negative delta error functions
@@ -138,8 +137,8 @@ class NeatEMAgent(object):
             error_func_positive_delta += dlogpi_positive_delta
             error_func_negative_delta += dlogpi_negative_delta
 
-        # error_func_positive_delta /= len(random_state_transitions)
-        # error_func_negative_delta /= len(random_state_transitions)
+        error_func_positive_delta /= len(random_state_transitions)
+        error_func_negative_delta /= len(random_state_transitions)
 
         '''
         now calculate scalar approximation.

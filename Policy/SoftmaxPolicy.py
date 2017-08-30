@@ -9,10 +9,11 @@ logger = logging.getLogger()
 
 
 class SoftmaxPolicy(object):
-    def __init__(self, dimension, num_actions, feature):
+    def __init__(self, dimension, num_actions, feature, is_greedy=False):
         self.dimension = dimension
         self.feature = feature
         self.num_actions = num_actions
+        self.is_greedy = is_greedy
         self.sigma = 1.0
         self.default_learning_rate = 0.01
         self.kl_threshold = 0.1
@@ -41,12 +42,12 @@ class SoftmaxPolicy(object):
         return self.num_actions
 
     def get_action(self, state_feature):
-        '''
-        Perform dot product between state feature and policy parameter and return sample from the normal distribution
-        :param state_feature:
-        :return:
-        '''
-
+        """
+        Perform dot product between state feature and policy parameter and return sample from the normal distribution        
+        :param state_feature: 
+        :param is_greedy: 
+        :return: 
+        """
         # for each policy parameter (representing each action)
         # calculate phi /cdot theta
         # put these into array and softmax and compute random sample
@@ -63,20 +64,23 @@ class SoftmaxPolicy(object):
 
         softmax = np.exp(action_probabilities) / np.sum(np.exp(action_probabilities), axis=0)
 
-        running_total = 0.0
-        total = np.zeros(shape=self.num_actions)
-        for i, value in enumerate(softmax):
-            running_total += value
-            total[i] = running_total
+        if self.is_greedy:
+            return np.argmax(softmax), softmax
+        else:
+            running_total = 0.0
+            total = np.zeros(shape=self.num_actions)
+            for i, value in enumerate(softmax):
+                running_total += value
+                total[i] = running_total
 
-        rand = random.uniform(0, 1)
-        chosen_policy_index = 0
-        for i in range(len(total)):
-            if total[i] > rand:
-                chosen_policy_index = i
-                break
+            rand = random.uniform(0, 1)
+            chosen_policy_index = 0
+            for i in range(len(total)):
+                if total[i] > rand:
+                    chosen_policy_index = i
+                    break
 
-        return chosen_policy_index, softmax  # another possibility is to be greedy and do np.argmax(softmax), softmax
+            return chosen_policy_index, softmax
 
     def dlogpi(self, state_feature, action):
         """
@@ -105,8 +109,8 @@ class SoftmaxPolicy(object):
     def update_parameters(self, d_error_squared, state_transitions):
         current_policy_parameters = np.copy(self.parameters)
 
+        logger.debug(d_error_squared)
         new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared)
-        logger.debug(new_policy_parameters)
         self.set_policy_parameters(new_policy_parameters)
 
         # Perform KL Divergence check
@@ -131,7 +135,7 @@ class SoftmaxPolicy(object):
             learning_rate = self.default_learning_rate
 
         for i, param in enumerate(current_parameters):
-            new_parameter[i] = max(min(param - learning_rate * delta_vector[i], 10), -10)
+            new_parameter[i] = param - learning_rate * delta_vector[i]
 
         return new_parameter
 

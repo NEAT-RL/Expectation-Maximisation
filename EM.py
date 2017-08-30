@@ -54,6 +54,11 @@ class EM(object):
         self.trajectories = []
         self.__initialise_trajectories()
         self.__initialise_agents()
+        self.max_steps = props.getint('train', 'max_steps')
+        self.step_size = props.getint('train', 'step_size')
+        self.trajectories_size = props.getint('initialisation', 'trajectory_size')
+        self.experience_replay = props.getint('evaluation', 'experience_replay')
+        self.policy_state_transitions = props.getint('evaluation', 'num_policy_state_transitions')
 
     def __initialise_agents(self):
         self.agent = NeatEMAgent(props.getint('feature', 'dimension'),
@@ -133,15 +138,18 @@ class EM(object):
         self.trajectories.append((total_reward, uuid.uuid4(), new_state_transitions))
 
         # strip weak trajectories from trajectory_set
-        self.trajectories = heapq.nlargest(props.getint('initialisation', 'trajectory_size'), self.trajectories)
+        self.trajectories = heapq.nlargest(self.trajectories_size, self.trajectories)
+
+        if self.trajectories[0][0] >= 200:
+            # Found the best possible trajectory so now turn policy into greedy one
+            self.agent.policy.is_greedy = True
 
         # Collect set of state transitions
         state_transitions = set()
         for i in range(len(self.trajectories)):
             state_transitions = state_transitions | set(self.trajectories[i][2])
 
-        experience_replay = props.getint('evaluation', 'experience_replay')
-        random_state_transitions = random.sample(state_transitions, experience_replay) if len(state_transitions) > experience_replay else state_transitions
+        random_state_transitions = random.sample(state_transitions, self.experience_replay) if len(state_transitions) > self.experience_replay else state_transitions
 
         # update value function
         logger.debug("Updating value function")
@@ -149,8 +157,8 @@ class EM(object):
 
         # update policy parameter
         logger.debug("Updating policy function")
-        policy_state_transitions = props.getint('evaluation', 'num_policy_state_transitions')
-        random_state_transitions = random.sample(state_transitions, policy_state_transitions) if len(state_transitions) > policy_state_transitions else state_transitions
+
+        random_state_transitions = random.sample(state_transitions, self.policy_state_transitions) if len(state_transitions) > self.policy_state_transitions else state_transitions
         self.agent.update_policy_function(random_state_transitions, state_transitions, self.pool)
 
         # now assign fitness to each individual/genome
@@ -174,8 +182,6 @@ class EM(object):
 
     def generate_new_trajectory(self):
         logger.debug("Generating new trajectory")
-        max_steps = props.getint('train', 'max_steps')
-        step_size = props.getint('train', 'step_size')
 
         # perform a rollout
         state = env.reset()
@@ -183,13 +189,13 @@ class EM(object):
         steps = 0
         total_reward = 0
         new_trajectory = []
-        while not terminal_reached and steps < max_steps:
+        while not terminal_reached and steps < self.max_steps:
             state_features = self.agent.feature.phi(state)
             # get recommended action and the action distribution using policy
             action, actions_distribution = self.agent.get_policy().get_action(state_features)
             next_state, reward, done, info = env.step(action)
 
-            for x in range(step_size - 1):
+            for x in range(self.step_size - 1):
                 if done:
                     terminal_reached = True
                     break
