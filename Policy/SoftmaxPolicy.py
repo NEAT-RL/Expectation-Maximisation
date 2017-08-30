@@ -106,23 +106,23 @@ class SoftmaxPolicy(object):
         current_policy_parameters = np.copy(self.parameters)
 
         new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared)
-
-        # self.set_policy_parameters(new_policy_parameters)
+        logger.debug(new_policy_parameters)
+        self.set_policy_parameters(new_policy_parameters)
 
         # Perform KL Divergence check
-        learning_rate = self.default_learning_rate
-        for j in range(5):
-            kl_difference = self.avg_kl_divergence(state_transitions, new_policy_parameters, current_policy_parameters)
-            if kl_difference < self.kl_threshold:
-                self.set_policy_parameters(new_policy_parameters)
-                break
-            else:
-                logger.debug("Not updating policy parameter as kl_difference was %f. Learning rate=%f", kl_difference,
-                             learning_rate)
-                learning_rate /= 10  # reduce learning rate
-                # recalculate gradient using the new learning rate
-                new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared,
-                                                                        learning_rate=learning_rate)
+        # learning_rate = self.default_learning_rate
+        # for j in range(5):
+        #     kl_difference = self.avg_kl_divergence(state_transitions, new_policy_parameters, current_policy_parameters)
+        #     if kl_difference < self.kl_threshold:
+        #         self.set_policy_parameters(new_policy_parameters)
+        #         break
+        #     else:
+        #         logger.debug("Not updating policy parameter as kl_difference was %f. Learning rate=%f", kl_difference,
+        #                      learning_rate)
+        #         learning_rate /= 10  # reduce learning rate
+        #         # recalculate gradient using the new learning rate
+        #         new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared,
+        #                                                                 learning_rate=learning_rate)
 
     def __calculate_new_parameters(self, current_parameters, delta_vector, learning_rate=None):
         new_parameter = np.zeros(shape=len(current_parameters), dtype=float)

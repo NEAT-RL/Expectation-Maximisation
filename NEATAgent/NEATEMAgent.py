@@ -23,7 +23,10 @@ class NeatEMAgent(object):
         self.num_actions = num_actions
         # self.feature = Feature.discretizedFeature(state_length, feature_size)
         # Cartpole-v0
-        self.feature = self.__create_discretised_feature([10, 10, 10, 10], 4, [-2.4, -10, -41.8 * math.pi / 180, -10], [2.4, 10, 41.8 * math.pi / 180, 10])
+        self.feature = self.__create_discretised_feature([10, 10, 10, 10],
+                                                         state_length,
+                                                         [-2.4, -10, -41.8 * math.pi / 180, -10],
+                                                         [2.4, 10, 41.8 * math.pi / 180, 10])
         self.valueFunction = ValueFunction(dimension)
         self.policy = SoftmaxPolicy(dimension, num_actions, self.feature)
         self.fitness = 0
@@ -73,12 +76,7 @@ class NeatEMAgent(object):
         delta_omega /= len(state_transitions)
         self.valueFunction.update_parameters(delta_omega)
 
-    def update_policy_function(self, trajectories, state_transitions, pool):
-        derror_squared = self.d_error_squared(trajectories, pool)
-        # update policy parameter
-        self.policy.update_parameters(derror_squared, state_transitions)
-
-    def d_error_squared(self, trajectories, pool):
+    def update_policy_function(self, random_state_transitions, all_state_transitions, pool):
         """
         For each parameter in error squared function:
            e(theta + delta)Transpose cdot e(theta+delta) - e(theta-delta)/(2*delta)
@@ -86,66 +84,62 @@ class NeatEMAgent(object):
         # first copy the policy parameters
         original_policy_parameters = self.policy.get_policy_parameters()
         # Perform Parallel computation of numeric approximation of error squared function
-        # pool = Pool(processes=3)
-        results = [
-            pool.apply_async(self.approximate_d_error_squared, args=(x, trajectories, original_policy_parameters)) for x
-            in range(len(original_policy_parameters))]
+        results = [pool.apply_async(self.approximate_d_error_squared,
+                                    args=(x, random_state_transitions, original_policy_parameters)
+                                    )
+                   for x in range(len(original_policy_parameters))]
         results2 = [i.get() for i in results]
-        d_error_squared = [value[1] for value in sorted(results2)]
+        d_error_squared = [value[1] for value in sorted(results2)]  # collect the error derivative in sorted order based on index
 
         # set policy parameter to its original value in case it has been changed. WHICH IT SHOULDN'T BE.
         self.policy.set_policy_parameters(original_policy_parameters)
+        # update policy parameter
+        self.policy.update_parameters(d_error_squared, all_state_transitions)
 
-        # Print the normalised update to see the energy of d_error_squared
-        max_value = max(d_error_squared) + 1e-10  # Adding tiny value to avoid potential divide by zero
-        norm = [float(k)/max_value for k in d_error_squared]
-        print(norm)
-        return d_error_squared
-
-    def approximate_d_error_squared(self, index, trajectories, original_policy_parameters):
+    def approximate_d_error_squared(self, index, random_state_transitions, original_policy_parameters):
         delta = 0.001
         # make new policy with original_policy_parameters
-        policy = SoftmaxPolicy(self.dimension, self.num_actions, self.feature)  # feature is unused if KL divergence is unused
+        policy = SoftmaxPolicy(self.dimension, self.num_actions, self.feature)  # feature is not needed if KL divergence is unused
+        policy.set_policy_parameters(original_policy_parameters)
 
         # maintain positive delta and negative delta error functions
-        error_func_positive_delta = np.zeros(shape=(policy.num_actions * self.dimension), dtype=float)
-        error_func_negative_delta = np.zeros(shape=(policy.num_actions * self.dimension), dtype=float)
+        error_func_positive_delta = np.zeros(shape=(policy.num_actions * policy.dimension), dtype=float)
+        error_func_negative_delta = np.zeros(shape=(policy.num_actions * policy.dimension), dtype=float)
 
-        new_parameters_positive_delta = np.copy(original_policy_parameters)
-        new_parameters_negative_delta = np.copy(original_policy_parameters)
+        policy_parameters_positive_delta = np.copy(original_policy_parameters)
+        policy_parameters_negative_delta = np.copy(original_policy_parameters)
 
         # add/subtract delta to both positive delta and negative delta function parameters
-        new_parameters_positive_delta[index] = new_parameters_positive_delta[index] + delta
-        new_parameters_negative_delta[index] = new_parameters_negative_delta[index] - delta
+        policy_parameters_positive_delta[index] = policy_parameters_positive_delta[index] + delta
+        policy_parameters_negative_delta[index] = policy_parameters_negative_delta[index] - delta
 
         # calculate the error function
-        for j, (_, __, state_transitions) in enumerate(trajectories):
-            for state_transition in state_transitions:
-                phi_old = self.feature.phi(state_transition.get_start_state())
+        for state_transition in random_state_transitions:
+            phi_start = self.feature.phi(state_transition.get_start_state())
 
-                # set theta + delta and calculate dlogpi for positive delta case
-                policy.set_policy_parameters(new_parameters_positive_delta)
-                dlogpi_positive_delta = policy.dlogpi(phi_old, state_transition.get_action())
+            # set theta + delta and calculate dlogpi for positive delta case
+            policy.set_policy_parameters(policy_parameters_positive_delta)
+            dlogpi_positive_delta = policy.dlogpi(phi_start, state_transition.get_action())
 
-                # set theta - delta and calculate dlogpi for negative delta case
-                policy.set_policy_parameters(new_parameters_negative_delta)
-                dlogpi_negative_delta = policy.dlogpi(phi_old, state_transition.get_action())
+            # set theta - delta and calculate dlogpi for negative delta case
+            policy.set_policy_parameters(policy_parameters_negative_delta)
+            dlogpi_negative_delta = policy.dlogpi(phi_start, state_transition.get_action())
 
-                # calculate td_error. TD Error calculate is independent of policy
-                phi_new = self.feature.phi(state_transition.get_end_state())
-                td_error = state_transition.get_reward() + self.gamma * self.valueFunction.get_value(
-                    phi_new) - self.valueFunction.get_value(phi_old)
+            # calculate td_error. TD Error calculate is independent of policy
+            phi_end = self.feature.phi(state_transition.get_end_state())
+            td_error = state_transition.get_reward() + self.gamma * self.valueFunction.get_value(
+                phi_end) - self.valueFunction.get_value(phi_start)
 
-                # Multiply dlogpi with td error for positive delta and negative delta functions
-                dlogpi_positive_delta *= td_error
-                dlogpi_negative_delta *= td_error
+            # Multiply dlogpi with td error for positive delta and negative delta functions
+            dlogpi_positive_delta *= td_error
+            dlogpi_negative_delta *= td_error
 
-                # added to error function positive and error function negative
-                error_func_positive_delta += dlogpi_positive_delta
-                error_func_negative_delta += dlogpi_negative_delta
+            # added to error function positive and to error function negative cases
+            error_func_positive_delta += dlogpi_positive_delta
+            error_func_negative_delta += dlogpi_negative_delta
 
-        error_func_positive_delta /= len(trajectories)
-        error_func_negative_delta /= len(trajectories)
+        # error_func_positive_delta /= len(random_state_transitions)
+        # error_func_negative_delta /= len(random_state_transitions)
 
         '''
         now calculate scalar approximation.
@@ -154,8 +148,9 @@ class NeatEMAgent(object):
 
         e(theta + delta)^Transpose dot e(theta+delta) - e(theta-delta)^Transpose dot e(theta-delta)/(2*delta)
         '''
-        error_derivative = np.dot(np.transpose(error_func_positive_delta), error_func_positive_delta) - np.dot(
-            np.transpose(error_func_negative_delta), error_func_negative_delta)
+        error_derivative = np.dot(np.transpose(error_func_positive_delta), error_func_positive_delta) - \
+                           np.dot(np.transpose(error_func_negative_delta), error_func_negative_delta)
+
         error_derivative /= (2 * delta)
 
         return index, error_derivative

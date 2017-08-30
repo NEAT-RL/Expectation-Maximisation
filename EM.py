@@ -2,12 +2,11 @@ from __future__ import print_function
 
 from multiprocessing import Pool
 import os
-import pickle
 import argparse
 import logging
 import random
 import sys
-import neat
+import uuid
 import gym
 import gym.wrappers as wrappers
 import configparser
@@ -17,6 +16,8 @@ import numpy as np
 import heapq
 from datetime import datetime
 import csv
+
+
 class StateTransition(object):
     def __init__(self, start_state, action, reward, end_state):
         self.start_state = start_state
@@ -106,7 +107,7 @@ class EM(object):
             if done:
                 terminal_reached = True
 
-        return total_reward, datetime.now(), trajectory
+        return total_reward, uuid.uuid4(), trajectory
 
     def execute_algorithm(self):
         iterations = props.getint('train', 'iterations')
@@ -115,7 +116,7 @@ class EM(object):
             t_start = datetime.now()
             self.agent.fitness = self.fitness_function()
             logger.debug("Agent fitness: %f", self.agent.fitness)
-            if i % 10 == 0:
+            if i % 100 == 0:
                 test_agent(self.agent, i)
             logger.debug("Completed Iteration %d. Time taken: %f", i, (datetime.now() - t_start).total_seconds())
 
@@ -129,7 +130,7 @@ class EM(object):
         total_reward, new_state_transitions = self.generate_new_trajectory()
         logger.debug("New trajectory reward: %d", total_reward)
 
-        self.trajectories.append((total_reward, datetime.now(), new_state_transitions))
+        self.trajectories.append((total_reward, uuid.uuid4(), new_state_transitions))
 
         # strip weak trajectories from trajectory_set
         self.trajectories = heapq.nlargest(props.getint('initialisation', 'trajectory_size'), self.trajectories)
@@ -148,7 +149,9 @@ class EM(object):
 
         # update policy parameter
         logger.debug("Updating policy function")
-        self.agent.update_policy_function(self.trajectories, state_transitions, self.pool)
+        policy_state_transitions = props.getint('evaluation', 'num_policy_state_transitions')
+        random_state_transitions = random.sample(state_transitions, policy_state_transitions) if len(state_transitions) > policy_state_transitions else state_transitions
+        self.agent.update_policy_function(random_state_transitions, state_transitions, self.pool)
 
         # now assign fitness to each individual/genome
         # fitness is the log prob of following the best trajectory
@@ -290,7 +293,7 @@ if __name__ == '__main__':
     logger.debug("Finished: Loading Properties File")
 
     # initialise experiment
-    pool = Pool(processes=props.getint('multiprocess','num_processes'))
+    pool = Pool(processes=props.getint('multiprocess', 'num_processes'))
     experiment = EM(pool)
 
     display_game = True if args.display == 'true' else False
