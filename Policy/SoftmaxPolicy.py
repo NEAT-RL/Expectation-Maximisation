@@ -18,7 +18,7 @@ class SoftmaxPolicy(object):
         self.default_learning_rate = 0.01
         self.kl_threshold = 0.1
         self.tiny = 1e-8
-        self.temperature = 0.001
+        self.temperature = 0.5
         self.initialise_parameters()
 
     def get_policy_parameters(self):
