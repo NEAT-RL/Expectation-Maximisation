@@ -52,13 +52,14 @@ class EM(object):
     def __init__(self, pool):
         self.pool = pool
         self.trajectories = []
-        self.__initialise_trajectories()
-        self.__initialise_agents()
         self.max_steps = props.getint('train', 'max_steps')
         self.step_size = props.getint('train', 'step_size')
-        self.trajectories_size = props.getint('initialisation', 'trajectory_size')
+        self.num_trajectories = props.getint('trajectory', 'trajectory_size')
+        self.best_trajectory_reward = props.getint('trajectory', 'best_trajectory_reward')
         self.experience_replay = props.getint('evaluation', 'experience_replay')
         self.policy_state_transitions = props.getint('evaluation', 'num_policy_state_transitions')
+        self.__initialise_trajectories()
+        self.__initialise_agents()
 
     def __initialise_agents(self):
         self.agent = NeatEMAgent(props.getint('feature', 'dimension'),
@@ -75,9 +76,8 @@ class EM(object):
         """
         logger.debug("Creating trajectories for first time...")
         t_start = datetime.now()
-        num_trajectories = props.getint('initialisation', 'trajectory_size')
 
-        results = [self.pool.apply_async(EM.initialise_trajectory) for x in range(num_trajectories)]
+        results = [self.pool.apply_async(EM.initialise_trajectory) for x in range(self.num_trajectories)]
         results = [trajectory.get() for trajectory in results]
         self.trajectories = results
         logger.debug("Finished: Creating trajectories. Time taken: %f", (datetime.now() - t_start).total_seconds())
@@ -138,9 +138,9 @@ class EM(object):
         self.trajectories.append((total_reward, uuid.uuid4(), new_state_transitions))
 
         # strip weak trajectories from trajectory_set
-        self.trajectories = heapq.nlargest(self.trajectories_size, self.trajectories)
+        self.trajectories = heapq.nlargest(self.num_trajectories, self.trajectories)
 
-        if self.trajectories[0][0] >= 200:
+        if self.trajectories[0][0] >= self.best_trajectory_reward:
             # Found the best possible trajectory so now turn policy into greedy one
             self.agent.policy.is_greedy = True
 

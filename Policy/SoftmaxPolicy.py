@@ -18,6 +18,7 @@ class SoftmaxPolicy(object):
         self.default_learning_rate = 0.01
         self.kl_threshold = 0.1
         self.tiny = 1e-8
+        self.temperature = 0.001
         self.initialise_parameters()
 
     def get_policy_parameters(self):
@@ -52,15 +53,17 @@ class SoftmaxPolicy(object):
         # calculate phi /cdot theta
         # put these into array and softmax and compute random sample
         action_probabilities = []
+        # max_value = None
         policy_parameters = np.split(self.parameters, self.num_actions)
         for i, parameter in enumerate(policy_parameters):
-            mu = np.dot(state_feature, parameter)
+            mu = np.dot(state_feature, parameter) / self.temperature
             action_probabilities.append(mu)
+            # if max_value is None or max_value < mu:
+            #     max_value = mu
 
-        # substract the largest value of actions to avoid erroring out when trying to find exp(value)
-        max_value = action_probabilities[np.argmax(action_probabilities)]
-        for i in range(len(action_probabilities)):
-            action_probabilities[i] = action_probabilities[i] - max_value
+        # subtract the largest value of actions to avoid erroring out when trying to find exp(value)
+        # for i in range(len(action_probabilities)):
+        #     action_probabilities[i] = action_probabilities[i] - max_value
 
         softmax = np.exp(action_probabilities) / np.sum(np.exp(action_probabilities), axis=0)
 
@@ -135,7 +138,7 @@ class SoftmaxPolicy(object):
             learning_rate = self.default_learning_rate
 
         for i, param in enumerate(current_parameters):
-            new_parameter[i] = param - learning_rate * delta_vector[i]
+            new_parameter[i] = max(min(param - learning_rate * delta_vector[i], 10), -10)
 
         return new_parameter
 
