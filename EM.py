@@ -132,10 +132,11 @@ class EM(object):
         Select best trajectory and perform policy update
         :return fitness of agent:
         """
-        total_reward, new_state_transitions = self.generate_new_trajectory()
-        logger.debug("New trajectory reward: %d", total_reward)
+        for i in range(20):
+            total_reward, new_state_transitions = self.generate_new_trajectory()
+            #logger.debug("New trajectory reward: %d", total_reward)
 
-        self.trajectories.append((total_reward, uuid.uuid4(), new_state_transitions))
+            self.trajectories.append((total_reward, uuid.uuid4(), new_state_transitions))
 
         # strip weak trajectories from trajectory_set
         self.trajectories = heapq.nlargest(self.num_trajectories, self.trajectories)
@@ -181,7 +182,7 @@ class EM(object):
         return best_trajectory_prob
 
     def generate_new_trajectory(self):
-        logger.debug("Generating new trajectory")
+        #logger.debug("Generating new trajectory")
 
         # perform a rollout
         state = env.reset()
@@ -211,7 +212,7 @@ class EM(object):
             if done:
                 terminal_reached = True
 
-        logger.debug("Finished: Generating new trajectory")
+        #logger.debug("Finished: Generating new trajectory")
         return total_reward, new_trajectory
 
 
@@ -299,7 +300,8 @@ if __name__ == '__main__':
     logger.debug("Finished: Loading Properties File")
 
     # initialise experiment
-    pool = Pool(processes=props.getint('multiprocess', 'num_processes'))
+    # pool = Pool(processes=props.getint('multiprocess', 'num_processes'))
+    pool = Pool()
     experiment = EM(pool)
 
     display_game = True if args.display == 'true' else False
