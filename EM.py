@@ -121,7 +121,7 @@ class EM(object):
             t_start = datetime.now()
             self.agent.fitness = self.fitness_function()
             logger.debug("Agent fitness: %f", self.agent.fitness)
-            if i % 100 == 0:
+            if i % 10 == 0:
                 test_agent(self.agent, i)
             logger.debug("Completed Iteration %d. Time taken: %f", i, (datetime.now() - t_start).total_seconds())
 
