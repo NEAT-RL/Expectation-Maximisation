@@ -57,7 +57,6 @@ class EM(object):
         self.num_trajectories = props.getint('trajectory', 'trajectory_size')
         self.best_trajectory_reward = props.getint('trajectory', 'best_trajectory_reward')
         self.experience_replay = props.getint('evaluation', 'experience_replay')
-        self.policy_state_transitions = props.getint('evaluation', 'num_policy_state_transitions')
         self.__initialise_trajectories()
         self.__initialise_agents()
         self.trajectory_count = 0
@@ -145,7 +144,10 @@ class EM(object):
 
         # order the trajectories
         self.trajectories.sort(reverse=True)
-        self.trajectories = self.trajectories[0:int(0.75*self.num_trajectories)] + self.trajectories[int(-0.25*self.num_trajectories):]
+        worst_trajectories = self.trajectories[int(0.7 * self.num_trajectories):]
+        self.trajectories = self.trajectories[0: int(0.7 * self.num_trajectories)] + [random.choice(worst_trajectories) for x in range(int(0.3 * self.num_trajectories))]
+        # self.trajectories = self.trajectories[0:int(0.7*self.num_trajectories)] + [random.choice(self.trajectories[int(0.7 * self.num_trajectories): ] for x in range(0.3*self.num_trajectories)]
+        # self.trajectories.sort(reverse=True)
 
         if self.trajectories[0][0] >= self.best_trajectory_reward:
             # Found the best possible trajectory so now turn policy into greedy one
@@ -313,8 +315,8 @@ if __name__ == '__main__':
     logger.debug("Finished: Loading Properties File")
 
     # initialise experiment
-    # pool = Pool(processes=props.getint('multiprocess', 'num_processes'))
-    pool = Pool()
+    pool = Pool(processes=props.getint('multiprocess', 'num_processes'))
+    # pool = Pool()
     experiment = EM(pool)
 
     display_game = True if args.display == 'true' else False
