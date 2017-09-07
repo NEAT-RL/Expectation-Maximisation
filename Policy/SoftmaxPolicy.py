@@ -4,7 +4,8 @@ import math
 import logging
 from datetime import datetime
 import scipy.stats as stats
-
+import theano
+import theano.tensor as T
 logger = logging.getLogger()
 
 
@@ -19,7 +20,8 @@ class SoftmaxPolicy(object):
         self.kl_threshold = 0.1
         self.tiny = 1e-8
         self.temperature = 0.5
-        self.initialise_parameters()
+        self.parameters = np.zeros(shape=(self.dimension, self.num_actions), dtype=float)
+
 
     def get_policy_parameters(self):
         return np.copy(self.parameters)
@@ -36,11 +38,31 @@ class SoftmaxPolicy(object):
         :return:
         """
         # self.parameters = np.random.uniform(low=self.tiny, high=1, size=(self.num_actions, self.dimension))
-        self.parameters = np.zeros(shape=(self.num_actions * self.dimension), dtype=float)
+        self.parameters = np.zeros(shape=(self.dimension, self.num_actions), dtype=float)
         # self.parameters.fill(self.tiny)
 
     def get_num_actions(self):
         return self.num_actions
+
+    def get_action_theano(self, state_feature):
+        softmax = T.nnet.softmax(T.dot(state_feature, self.parameters)).eval()[0]
+
+        return np.argmax(softmax), softmax
+        # running_total = 0.0
+        # total = np.zeros(shape=self.num_actions)
+        # for i, value in enumerate(softmax):
+        #     running_total += value
+        #     total[i] = running_total
+        #
+        # rand = random.uniform(0, 1)
+        # chosen_policy_index = 0
+        # for i in range(len(total)):
+        #     if total[i] > rand:
+        #         chosen_policy_index = i
+        #         break
+        #
+        # return chosen_policy_index, softmax
+
 
     def get_action(self, state_feature):
         """
@@ -109,6 +131,10 @@ class SoftmaxPolicy(object):
 
         return np.concatenate(dlogpi_parameters)
 
+    def update_parameters_theano(self, d_error_squared):
+        new_policy_parameters = self.__calculate_new_parameters(self.get_policy_parameters(), d_error_squared)
+        self.set_policy_parameters(new_policy_parameters)
+
     def update_parameters(self, d_error_squared, state_transitions):
         current_policy_parameters = np.copy(self.parameters)
 
@@ -132,13 +158,14 @@ class SoftmaxPolicy(object):
         #                                                                 learning_rate=learning_rate)
 
     def __calculate_new_parameters(self, current_parameters, delta_vector, learning_rate=None):
-        new_parameter = np.zeros(shape=len(current_parameters), dtype=float)
+        new_parameter = np.zeros(shape=(self.dimension, self.num_actions), dtype=float)
 
         if learning_rate is None:
             learning_rate = self.default_learning_rate
 
-        for i, param in enumerate(current_parameters):
-            new_parameter[i] = max(min(param - learning_rate * delta_vector[i], 10), -10)
+        for i in range(len(current_parameters)):
+            for j in range(len(current_parameters[i])):
+                new_parameter[i][j] = max(min(current_parameters[i][j] - learning_rate * delta_vector[i][j], 10), -10)
 
         return new_parameter
 
