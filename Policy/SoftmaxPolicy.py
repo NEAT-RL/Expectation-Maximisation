@@ -47,21 +47,21 @@ class SoftmaxPolicy(object):
     def get_action_theano(self, state_feature):
         softmax = T.nnet.softmax(T.dot(state_feature, self.parameters)).eval()[0]
 
-        return np.argmax(softmax), softmax
-        # running_total = 0.0
-        # total = np.zeros(shape=self.num_actions)
-        # for i, value in enumerate(softmax):
-        #     running_total += value
-        #     total[i] = running_total
-        #
-        # rand = random.uniform(0, 1)
-        # chosen_policy_index = 0
-        # for i in range(len(total)):
-        #     if total[i] > rand:
-        #         chosen_policy_index = i
-        #         break
-        #
-        # return chosen_policy_index, softmax
+        # return np.argmax(softmax), softmax
+        running_total = 0.0
+        total = np.zeros(shape=self.num_actions)
+        for i, value in enumerate(softmax):
+            running_total += value
+            total[i] = running_total
+
+        rand = random.uniform(0, 1)
+        chosen_policy_index = 0
+        for i in range(len(total)):
+            if total[i] > rand:
+                chosen_policy_index = i
+                break
+
+        return chosen_policy_index, softmax
 
 
     def get_action(self, state_feature):
