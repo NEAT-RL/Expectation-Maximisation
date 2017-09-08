@@ -48,8 +48,7 @@ class StateTransition(object):
 
 class EM(object):
 
-    def __init__(self, pool):
-        self.pool = pool
+    def __init__(self):
         self.trajectories = []
         self.num_actions = props.getint('policy', 'num_actions')
         self.max_steps = props.getint('train', 'max_steps')
@@ -77,8 +76,8 @@ class EM(object):
         logger.debug("Creating trajectories for first time...")
         t_start = datetime.now()
         num_actions = self.num_actions
-        results = [self.pool.apply_async(EM.initialise_trajectory, args=([num_actions])) for x in range(self.num_trajectories)]
-        self.trajectories = [trajectory.get() for trajectory in results]
+        for x in range(self.num_trajectories):
+            self.trajectories.append(EM.initialise_trajectory(num_actions))
         # self.trajectories = heapq.nlargest(len(self.trajectories), self.trajectories)
         self.trajectories.sort(reverse=True)  # We want to do in-place sorting for memory saving. sorting(n) is faster than heapq.nlargest for larger values of n.
         logger.debug("Finished: Creating trajectories. Time taken: %f", (datetime.now() - t_start).total_seconds())
@@ -128,7 +127,8 @@ class EM(object):
             t_start = datetime.now()
             self.agent.fitness = self.fitness_function()
             logger.debug("Agent fitness: %f", self.agent.fitness)
-            if i % 10 == 0:
+            if i % 100 == 0:
+                print(self.agent.get_policy().parameters)
                 test_agent(self.agent, i)
             logger.debug("Completed Iteration %d. Time taken: %f", i, (datetime.now() - t_start).total_seconds())
 
@@ -181,7 +181,6 @@ class EM(object):
         # now assign fitness to each individual/genome
         # fitness is the log prob of following the best trajectory
         best_trajectory = self.trajectories[0]
-        total_reward, _, state_starts, state_ends, actions, rewards = best_trajectory
         best_trajectory_prob = self.agent.calculate_agent_fitness(best_trajectory[2], best_trajectory[4])
 
         logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
@@ -280,7 +279,7 @@ def test_agent(agent, iteration_count):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('env_id', nargs='?', default='CartPole-v0', help='Select the environment to run')
+    parser.add_argument('env_id', nargs='?', default='AdaptedCartPole-v0', help='Select the environment to run')
     parser.add_argument('display', nargs='?', default='false', help='Show display of game. true or false')
     args = parser.parse_args()
 
@@ -315,9 +314,7 @@ if __name__ == '__main__':
     logger.debug("Finished: Loading Properties File")
 
     # initialise experiment
-    pool = Pool(processes=props.getint('multiprocess', 'num_processes'))
-    # pool = Pool()
-    experiment = EM(pool)
+    experiment = EM()
 
     display_game = True if args.display == 'true' else False
     try:
