@@ -1,10 +1,7 @@
 import random
 import numpy as np
-import math
 import logging
-from datetime import datetime
 import scipy.stats as stats
-import theano
 import theano.tensor as T
 logger = logging.getLogger()
 
@@ -21,7 +18,6 @@ class SoftmaxPolicy(object):
         self.tiny = 1e-8
         self.temperature = 0.5
         self.parameters = np.zeros(shape=(self.dimension, self.num_actions), dtype=float)
-
 
     def get_policy_parameters(self):
         return np.copy(self.parameters)
@@ -62,7 +58,6 @@ class SoftmaxPolicy(object):
                 break
 
         return chosen_policy_index, softmax
-
 
     def get_action(self, state_feature):
         """

@@ -36,7 +36,7 @@ class NeatEMAgent(object):
         self.phi = T.fmatrix('phi')
         self.action = T.imatrix('action')
         self.phi_new = T.fmatrix('phi_new')
-        self.reward = T.fvector('reward')
+        self.reward = T.dvector('reward')
         self.theta = theano.shared(self.policy.get_policy_parameters(), 'theta')
         self.omega = theano.shared(self.valueFunction.get_parameter(), 'omega')
         logpi = T.log(T.batched_dot(T.nnet.softmax(T.dot(self.phi, self.theta)), self.action))
