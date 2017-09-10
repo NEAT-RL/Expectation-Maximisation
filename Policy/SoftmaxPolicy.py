@@ -128,7 +128,6 @@ class SoftmaxPolicy(object):
     def update_parameters_theano(self, d_error_squared):
         new_policy_parameters = self.__calculate_new_parameters(self.get_policy_parameters(), d_error_squared)
         self.set_policy_parameters(new_policy_parameters)
-        print(self.parameters)
 
     def update_parameters(self, d_error_squared, state_transitions):
         current_policy_parameters = np.copy(self.parameters)

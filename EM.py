@@ -290,7 +290,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=None)
     parser.add_argument('env_id', nargs='?', default='CartPole-v0', help='Select the environment to run')
     parser.add_argument('display', nargs='?', default='false', help='Show display of game. true or false')
-    parser.add_argument('--threads', nargs='?', default='0', help='Number of threads to use. 0 means no threads')
+    parser.add_argument('--threads', nargs='?', default='max', help='Number of threads to use. 0 means no threads')
     args = parser.parse_args()
 
     # Call `undo_logger_setup` if you want to undo Gym's logger setup
