@@ -13,7 +13,7 @@ class SoftmaxPolicy(object):
         self.num_actions = num_actions
         self.is_greedy = is_greedy
         self.sigma = 1.0
-        self.default_learning_rate = 0.01
+        self.default_learning_rate = 0.0001
         self.kl_threshold = 0.1
         self.tiny = 1e-8
         self.temperature = 0.5
@@ -66,21 +66,20 @@ class SoftmaxPolicy(object):
         :param is_greedy: 
         :return: 
         """
+
         # for each policy parameter (representing each action)
         # calculate phi /cdot theta
         # put these into array and softmax and compute random sample
         action_probabilities = []
-        # max_value = None
-        policy_parameters = np.split(self.parameters, self.num_actions)
+        policy_parameters = np.transpose(self.parameters)
         for i, parameter in enumerate(policy_parameters):
-            mu = np.dot(state_feature, parameter) / self.temperature
+            mu = np.dot(state_feature, parameter)
             action_probabilities.append(mu)
-            # if max_value is None or max_value < mu:
-            #     max_value = mu
 
         # subtract the largest value of actions to avoid erroring out when trying to find exp(value)
-        # for i in range(len(action_probabilities)):
-        #     action_probabilities[i] = action_probabilities[i] - max_value
+        max_value = action_probabilities[np.argmax(action_probabilities)]
+        for i in range(len(action_probabilities)):
+            action_probabilities[i] = action_probabilities[i] - max_value
 
         softmax = np.exp(action_probabilities) / np.sum(np.exp(action_probabilities), axis=0)
 
@@ -129,6 +128,7 @@ class SoftmaxPolicy(object):
     def update_parameters_theano(self, d_error_squared):
         new_policy_parameters = self.__calculate_new_parameters(self.get_policy_parameters(), d_error_squared)
         self.set_policy_parameters(new_policy_parameters)
+        print(self.parameters)
 
     def update_parameters(self, d_error_squared, state_transitions):
         current_policy_parameters = np.copy(self.parameters)
@@ -160,7 +160,8 @@ class SoftmaxPolicy(object):
 
         for i in range(len(current_parameters)):
             for j in range(len(current_parameters[i])):
-                new_parameter[i][j] = max(min(current_parameters[i][j] - learning_rate * delta_vector[i][j], 10), -10)
+                # new_parameter[i][j] = max(min(current_parameters[i][j] - learning_rate * delta_vector[i][j], 10), -10)
+                new_parameter[i][j] = current_parameters[i][j] - learning_rate * delta_vector[i][j]
 
         return new_parameter
 

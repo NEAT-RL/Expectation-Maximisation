@@ -15,7 +15,7 @@ from NEATAgent.NEATEMAgent import NeatEMAgent
 import numpy as np
 from datetime import datetime
 import csv
-
+import multiprocessing
 
 class StateTransition(object):
     def __init__(self, start_state, action, reward, end_state):
@@ -139,14 +139,23 @@ class EM(object):
         Select best trajectory and perform policy update
         :return fitness of agent:
         """
-        for i in range(5):
-            self.trajectories.append(self.generate_new_trajectory(self.num_actions))
+        if allow_multiprocessing:
+            new_trajectories = [
+                pool.apply_async(self.generate_new_trajectory) for
+                i
+                in
+                range(10)]
+            results = [new_trajectory.get() for new_trajectory in new_trajectories]
+            self.trajectories += results
+        else:
+            for i in range(10):
+                self.trajectories.append(self.generate_new_trajectory())
+
 
         # order the trajectories
         self.trajectories.sort(reverse=True)
-        worst_trajectories = self.trajectories[int(0.7 * self.num_trajectories):]
-        self.trajectories = self.trajectories[0: int(0.7 * self.num_trajectories)] + [random.choice(worst_trajectories) for x in range(int(0.3 * self.num_trajectories))]
-        # self.trajectories = self.trajectories[0:int(0.7*self.num_trajectories)] + [random.choice(self.trajectories[int(0.7 * self.num_trajectories): ] for x in range(0.3*self.num_trajectories)]
+        worst_trajectories = self.trajectories[int(0.9 * self.num_trajectories):]
+        self.trajectories = self.trajectories[0: int(0.9 * self.num_trajectories)] + [random.choice(worst_trajectories) for x in range(int(0.1 * self.num_trajectories))]
         # self.trajectories.sort(reverse=True)
 
         if self.trajectories[0][0] >= self.best_trajectory_reward:
@@ -187,9 +196,9 @@ class EM(object):
         logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
         return best_trajectory_prob
 
-    def generate_new_trajectory(self, num_actions):
+    def generate_new_trajectory(self):
         #logger.debug("Generating new trajectory")
-
+        num_actions = self.num_actions
         state_starts = []
         state_ends = []
         rewards = []
@@ -279,8 +288,9 @@ def test_agent(agent, iteration_count):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('env_id', nargs='?', default='AdaptedCartPole-v0', help='Select the environment to run')
+    parser.add_argument('env_id', nargs='?', default='CartPole-v0', help='Select the environment to run')
     parser.add_argument('display', nargs='?', default='false', help='Show display of game. true or false')
+    parser.add_argument('--threads', nargs='?', default='0', help='Number of threads to use. 0 means no threads')
     args = parser.parse_args()
 
     # Call `undo_logger_setup` if you want to undo Gym's logger setup
@@ -313,6 +323,17 @@ if __name__ == '__main__':
     props.read(prop_path)
     logger.debug("Finished: Loading Properties File")
 
+    processes = None
+    allow_multiprocessing = True
+    if args.threads == '0':
+        allow_multiprocessing = False
+    elif not args.threads == 'max':
+        processes = int(args.threads)
+
+    print(allow_multiprocessing)
+    if allow_multiprocessing:
+        pool = multiprocessing.Pool(processes=processes)
+
     # initialise experiment
     experiment = EM()
 
@@ -322,7 +343,8 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logger.debug("User break.")
     finally:
-        pool.terminate()
+        if allow_multiprocessing:
+            pool.terminate()
         env.close()
 
     # Upload to the scoreboard. We could also do this from another
