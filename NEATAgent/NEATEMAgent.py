@@ -42,7 +42,7 @@ class NeatEMAgent(object):
         logpi = T.log(T.batched_dot(T.nnet.softmax(T.dot(self.phi, self.theta)), self.action))
         td_error = self.reward + T.dot(self.phi_new, self.omega) - T.dot(self.phi, self.omega)
         logpi_td_error = logpi * td_error
-        logpi_td_error_mean = T.mean(logpi_td_error)
+        logpi_td_error_mean = T.sum(logpi_td_error)
         # then do derivation to get e
         e = T.grad(logpi_td_error_mean, self.theta)
 
