@@ -236,6 +236,7 @@ class EM(object):
                 terminal_reached = True
 
         # logger.debug("Finished: Generating new trajectory")
+        logger.debug("total_reward: %f", total_reward)
         return total_reward, uuid.uuid4(), state_starts, state_ends, actions, rewards
 
 
