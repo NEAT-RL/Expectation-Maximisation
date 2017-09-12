@@ -33,6 +33,9 @@ class NeatEMAgent(object):
         self.policy = SoftmaxPolicy(dimension, num_actions, self.feature)
         self.fitness = 0
         self.gamma = 0.99
+        self.best_policy_parameters = None
+        self.best_average_reward = 0
+
         self.phi = T.fmatrix('phi')
         self.action = T.imatrix('action')
         self.phi_new = T.fmatrix('phi_new')
@@ -85,6 +88,10 @@ class NeatEMAgent(object):
 
     def get_fitness(self):
         return self.fitness
+
+    def save_policy_parameters(self, average_reward):
+        self.best_policy_parameters = self.policy.get_policy_parameters()
+        self.best_average_reward = average_reward
 
     def update_value_function(self, indexes, all_start_states, all_end_states, all_rewards):
         delta_omega = np.zeros(self.dimension, dtype=float)

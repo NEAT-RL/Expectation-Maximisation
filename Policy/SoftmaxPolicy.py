@@ -83,6 +83,8 @@ class SoftmaxPolicy(object):
 
         softmax = np.exp(action_probabilities) / np.sum(np.exp(action_probabilities), axis=0)
 
+        return np.argmax(softmax), softmax
+        '''
         if self.is_greedy:
             return np.argmax(softmax), softmax
         else:
@@ -100,6 +102,7 @@ class SoftmaxPolicy(object):
                     break
 
             return chosen_policy_index, softmax
+        '''
 
     def dlogpi(self, state_feature, action):
         """

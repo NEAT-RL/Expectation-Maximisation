@@ -139,19 +139,6 @@ class EM(object):
         Select best trajectory and perform policy update
         :return fitness of agent:
         """
-        if allow_multiprocessing:
-            new_trajectories = [
-                pool.apply_async(self.generate_new_trajectory) for
-                i
-                in
-                range(10)]
-            results = [new_trajectory.get() for new_trajectory in new_trajectories]
-            self.trajectories += results
-        else:
-            for i in range(10):
-                self.trajectories.append(self.generate_new_trajectory())
-
-
         # order the trajectories
         self.trajectories.sort(reverse=True)
         worst_trajectories = self.trajectories[int(0.9 * self.num_trajectories):]
@@ -194,6 +181,32 @@ class EM(object):
 
         logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
         logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
+
+        new_trajectories = []
+        if allow_multiprocessing:
+            results = [
+                pool.apply_async(self.generate_new_trajectory) for
+                i
+                in
+                range(10)]
+            new_trajectories = [new_trajectory.get() for new_trajectory in results]
+
+        else:
+            for i in range(10):
+                new_trajectories.append(self.generate_new_trajectory())
+
+        # Calculate the average of new trajectories and if its better then the best average then save policy parameters of agent
+        average_reward = 0
+        for i in range(len(new_trajectories)):
+            average_reward += new_trajectories[i][0]
+
+        average_reward /= len(new_trajectories)
+        if average_reward > self.agent.best_average_reward:
+            logger.debug('Best average reward is now: %f', average_reward)
+            self.agent.save_policy_parameters(average_reward)
+
+        self.trajectories += new_trajectories
+
         return best_trajectory_prob
 
     def generate_new_trajectory(self):
@@ -212,7 +225,7 @@ class EM(object):
         while not terminal_reached and steps < self.max_steps:
             state_features = self.agent.feature.phi(state)
             # get recommended action and the action distribution using policy
-            action, actions_distribution = self.agent.get_policy().get_action_theano(state_features)
+            action, actions_distribution = self.agent.get_policy().get_action(state_features)
             next_state, reward, done, info = env.step(action)
 
             for x in range(self.step_size - 1):
@@ -250,7 +263,8 @@ def test_agent(agent, iteration_count):
     total_steps = 0.0
     total_rewards = 0.0
     # Perform testing in parallel
-
+    # use the agents best policy parameter
+    agent.get_policy().set_policy_parameters(agent.best_policy_parameters)
     for i in range(test_episodes):
         state = env.reset()
         terminal_reached = False
