@@ -50,7 +50,7 @@ class NeatEMAgent(object):
 
         self.delta_policy = theano.function([self.phi, self.phi_new, self.reward, self.action], de_squared)
 
-        fitness_function = T.sum(T.log(T.batched_dot(T.nnet.softmax(T.dot(self.phi, self.theta)), self.action)))
+        fitness_function = T.sum(T.log(T.batched_dot(T.nnet.softmax(T.dot(self.phi, self.theta)), self.action) + 1e-20))
 
         self.calculate_fitness = theano.function([self.phi, self.action], fitness_function)
         self.delta_policy = theano.function([self.phi, self.phi_new, self.reward, self.action], de_squared)
