@@ -127,7 +127,7 @@ class EM(object):
             t_start = datetime.now()
             self.agent.fitness = self.fitness_function()
             logger.debug("Agent fitness: %f", self.agent.fitness)
-            if i % 100 == 0:
+            if i % 50 == 0:
                 print(self.agent.get_policy().parameters)
                 test_agent(self.agent, i)
             logger.debug("Completed Iteration %d. Time taken: %f", i, (datetime.now() - t_start).total_seconds())
@@ -139,14 +139,12 @@ class EM(object):
         Select best trajectory and perform policy update
         :return fitness of agent:
         """
-        # order the trajectories
-        self.trajectories.sort(reverse=True)
         worst_trajectories = self.trajectories[int(0.9 * self.num_trajectories):]
         self.trajectories = self.trajectories[0: int(0.9 * self.num_trajectories)] + [random.choice(worst_trajectories) for x in range(int(0.1 * self.num_trajectories))]
         # self.trajectories.sort(reverse=True)
 
         if self.trajectories[0][0] >= self.best_trajectory_reward:
-            # Found the best possible trajectory so now turn policy into greedy one
+            # Found the best trajectory so now turn policy into greedy one
             self.agent.policy.is_greedy = True
 
         all_state_starts = []
@@ -174,38 +172,47 @@ class EM(object):
         self.agent.update_policy_function_theano(all_state_starts, all_state_ends, all_actions, all_rewards)
         # self.agent.update_policy_function(random_state_transitions, state_transitions, self.pool)
 
-        # now assign fitness to each individual/genome
-        # fitness is the log prob of following the best trajectory
-        best_trajectory = self.trajectories[0]
-        best_trajectory_prob = self.agent.calculate_agent_fitness(best_trajectory[2], best_trajectory[4])
-
-        logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
-        logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
-
         new_trajectories = []
         if allow_multiprocessing:
             results = [
                 pool.apply_async(self.generate_new_trajectory) for
                 i
                 in
-                range(10)]
+                range(2)]
             new_trajectories = [new_trajectory.get() for new_trajectory in results]
 
         else:
-            for i in range(10):
+            for i in range(2):
                 new_trajectories.append(self.generate_new_trajectory())
 
         # Calculate the average of new trajectories and if its better then the best average then save policy parameters of agent
-        average_reward = 0
-        for i in range(len(new_trajectories)):
-            average_reward += new_trajectories[i][0]
-
-        average_reward /= len(new_trajectories)
-        if average_reward > self.agent.best_average_reward:
-            logger.debug('Best average reward is now: %f', average_reward)
-            self.agent.save_policy_parameters(average_reward)
+        # average_reward = 0
+        # for i in range(len(new_trajectories)):
+        #     average_reward += new_trajectories[i][0]
+        #
+        # average_reward /= len(new_trajectories)
+        # if average_reward >= self.agent.best_average_reward:
+        #     logger.debug('Best average reward is now: %f', average_reward)
+        #     self.agent.save_policy_parameters(average_reward)
 
         self.trajectories += new_trajectories
+        # order the trajectories
+        self.trajectories.sort(reverse=True)
+
+        # now assign fitness to each individual/genome
+        # fitness is the log prob of following the best 5 trajectory
+        best_trajectories = self.trajectories[:5]
+        best_start_states = []
+        best_actions = []
+
+        for i, (_, _, state_starts, state_ends, actions, rewards) in enumerate(best_trajectories):
+            best_start_states += state_starts
+            best_actions += actions
+
+        best_trajectory_prob = self.agent.calculate_agent_fitness(best_start_states, best_actions)
+
+        logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
+        logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
 
         return best_trajectory_prob
 
@@ -264,7 +271,7 @@ def test_agent(agent, iteration_count):
     total_rewards = 0.0
     # Perform testing in parallel
     # use the agents best policy parameter
-    agent.get_policy().set_policy_parameters(agent.best_policy_parameters)
+    # agent.get_policy().set_policy_parameters(agent.best_policy_parameters)
     for i in range(test_episodes):
         state = env.reset()
         terminal_reached = False
