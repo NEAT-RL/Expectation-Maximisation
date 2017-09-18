@@ -57,6 +57,7 @@ class NeatEMAgent(object):
 
         self.calculate_fitness = theano.function([self.phi, self.action], fitness_function)
         self.delta_policy = theano.function([self.phi, self.phi_new, self.reward, self.action], de_squared)
+        self.td_error_function = theano.function([self.phi, self.phi_new, self.reward], td_error)
 
     @staticmethod
     def __create_discretised_feature(partition_size, state_length, state_lower_bounds, state_upper_bounds):
@@ -115,7 +116,8 @@ class NeatEMAgent(object):
             phi_new.append(self.feature.phi(all_state_ends[i]))
 
         delta_policy = self.delta_policy(phi, phi_new, all_rewards, all_actions)
-        self.policy.update_parameters_theano(delta_policy)
+        print(self.td_error_function(phi, phi_new, all_rewards))
+        self.policy.update_parameters_theano(delta_policy, phi)
         self.theta.set_value(self.policy.get_policy_parameters())
 
     def update_policy_function(self, random_state_transitions, all_state_transitions, pool):

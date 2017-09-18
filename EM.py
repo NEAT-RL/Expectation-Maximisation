@@ -16,34 +16,8 @@ import numpy as np
 from datetime import datetime
 import csv
 import multiprocessing
-
-class StateTransition(object):
-    def __init__(self, start_state, action, reward, end_state):
-        self.start_state = start_state
-        self.action = action
-        self.reward = reward
-        self.end_state = end_state
-
-    def __hash__(self):
-        return hash(str(np.concatenate((self.start_state, self.end_state))))
-
-    def __eq__(self, other):
-        return np.array_equal(self.start_state, other.start_state) and np.array_equal(self.end_state, other.end_state)
-
-    def get_start_state(self):
-        return self.start_state
-
-    def get_end_state(self):
-        return self.end_state
-
-    def get_action(self):
-        return self.action
-
-    def get_reward(self):
-        return self.reward
-
-    def get_tuple(self):
-        return self.start_state, self.action, self.reward, self.end_state
+import heapq
+from time import sleep
 
 
 class EM(object):
@@ -58,7 +32,6 @@ class EM(object):
         self.experience_replay = props.getint('evaluation', 'experience_replay')
         self.__initialise_trajectories()
         self.__initialise_agents()
-        self.trajectory_count = 0
 
     def __initialise_agents(self):
         self.agent = NeatEMAgent(props.getint('feature', 'dimension'),
@@ -117,7 +90,6 @@ class EM(object):
             steps += 1
             if done:
                 terminal_reached = True
-
         return total_reward, uuid.uuid4(), state_starts, state_ends, actions, rewards
 
     def execute_algorithm(self):
@@ -127,6 +99,8 @@ class EM(object):
             t_start = datetime.now()
             self.agent.fitness = self.fitness_function()
             logger.debug("Agent fitness: %f", self.agent.fitness)
+            if i % 10 == 0:
+                sleep(5)
             if i % 50 == 0:
                 print(self.agent.get_policy().parameters)
                 test_agent(self.agent, i)
@@ -139,13 +113,18 @@ class EM(object):
         Select best trajectory and perform policy update
         :return fitness of agent:
         """
-        worst_trajectories = self.trajectories[int(0.9 * self.num_trajectories):]
-        self.trajectories = self.trajectories[0: int(0.9 * self.num_trajectories)] + [random.choice(worst_trajectories) for x in range(int(0.1 * self.num_trajectories))]
+        # worst_trajectories = self.trajectories[int(0.9 * self.num_trajectories):]
+        # self.trajectories = self.trajectories[0: int(0.9 * self.num_trajectories)] + [random.choice(worst_trajectories) for x in range(int(0.1 * self.num_trajectories))]
         # self.trajectories.sort(reverse=True)
+        self.trajectories = heapq.nlargest(self.num_trajectories, self.trajectories)
+        logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
+        logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
 
-        if self.trajectories[0][0] >= self.best_trajectory_reward:
-            # Found the best trajectory so now turn policy into greedy one
-            self.agent.policy.is_greedy = True
+        # if self.trajectories[0][0] >= self.best_trajectory_reward:
+        #     # Found the best possible trajectory so now turn policies into greedy one
+        #     for agent in agents:
+            # self.agent.policy.is_greedy = True
+        #     greedy = True
 
         all_state_starts = []
         all_state_ends = []
@@ -186,14 +165,14 @@ class EM(object):
                 new_trajectories.append(self.generate_new_trajectory())
 
         # Calculate the average of new trajectories and if its better then the best average then save policy parameters of agent
-        # average_reward = 0
-        # for i in range(len(new_trajectories)):
-        #     average_reward += new_trajectories[i][0]
+        average_reward = 0
+        for i in range(len(new_trajectories)):
+            average_reward += new_trajectories[i][0]
         #
-        # average_reward /= len(new_trajectories)
-        # if average_reward >= self.agent.best_average_reward:
-        #     logger.debug('Best average reward is now: %f', average_reward)
-        #     self.agent.save_policy_parameters(average_reward)
+        average_reward /= len(new_trajectories)
+        if average_reward >= self.best_trajectory_reward:
+            logger.debug('Will perform kl divergence checks now')
+            self.agent.get_policy().check_kl_divergence = True
 
         self.trajectories += new_trajectories
         # order the trajectories
@@ -210,9 +189,6 @@ class EM(object):
             best_actions += actions
 
         best_trajectory_prob = self.agent.calculate_agent_fitness(best_start_states, best_actions)
-
-        logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
-        logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
 
         return best_trajectory_prob
 
@@ -232,7 +208,7 @@ class EM(object):
         while not terminal_reached and steps < self.max_steps:
             state_features = self.agent.feature.phi(state)
             # get recommended action and the action distribution using policy
-            action, actions_distribution = self.agent.get_policy().get_action(state_features)
+            action, actions_distribution = self.agent.get_policy().get_action_theano(state_features)
             next_state, reward, done, info = env.step(action)
 
             for x in range(self.step_size - 1):
