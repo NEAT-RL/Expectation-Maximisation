@@ -140,15 +140,7 @@ class EM(object):
         len_state_transitions = len(all_state_starts)
         random_indexes = random.sample(range(0, len_state_transitions), self.experience_replay if len_state_transitions > self.experience_replay else len_state_transitions)
         # random_state_transitions = random.sample(state_transitions, self.experience_replay) if len(state_transitions) > self.experience_replay else state_transitions
-
-        # update value function
-        logger.debug("Updating value function")
-        self.agent.update_value_function(random_indexes, all_state_starts, all_state_ends, all_rewards)
-
-        # update policy parameter
-        logger.debug("Updating policy function")
-
-        self.agent.update_policy_function_theano(all_state_starts, all_state_ends, all_actions, all_rewards)
+        self.agent.update_parameters(all_state_starts, all_state_ends, all_actions, all_rewards, random_indexes)
         # self.agent.update_policy_function(random_state_transitions, state_transitions, self.pool)
 
         new_trajectories = []
