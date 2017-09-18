@@ -134,7 +134,7 @@ class SoftmaxPolicy(object):
         new_policy_parameters = self.__calculate_new_parameters(self.get_policy_parameters(), d_error_squared)
 
         if self.check_kl_divergence:
-            Perform KL Divergence check
+            # Perform KL Divergence check
             learning_rate = self.default_learning_rate
             for j in range(3):
                 kl_difference = self.avg_kl_divergence(start_states, new_policy_parameters, current_policy_parameters)
