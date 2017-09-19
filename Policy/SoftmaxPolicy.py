@@ -14,10 +14,11 @@ class SoftmaxPolicy(object):
         self.is_greedy = is_greedy
         self.sigma = 1.0
         self.default_learning_rate = 0.0001
-        self.kl_threshold = 0.1
+        self.kl_threshold = 0.01
         self.tiny = 1e-8
         self.temperature = 0.5
         self.parameters = np.zeros(shape=(self.dimension, self.num_actions), dtype=float)
+        self.check_kl_divergence = False
 
     def get_policy_parameters(self):
         return np.copy(self.parameters)
@@ -61,10 +62,10 @@ class SoftmaxPolicy(object):
 
     def get_action(self, state_feature):
         """
-        Perform dot product between state feature and policy parameter and return sample from the normal distribution        
-        :param state_feature: 
-        :param is_greedy: 
-        :return: 
+        Perform dot product between state feature and policy parameter and return sample from the normal distribution
+        :param state_feature:
+        :param is_greedy:
+        :return:
         """
 
         # for each policy parameter (representing each action)
@@ -128,8 +129,27 @@ class SoftmaxPolicy(object):
 
         return np.concatenate(dlogpi_parameters)
 
-    def update_parameters_theano(self, d_error_squared):
+    def update_parameters_theano(self, d_error_squared, start_states):
+        current_policy_parameters = self.get_policy_parameters()
         new_policy_parameters = self.__calculate_new_parameters(self.get_policy_parameters(), d_error_squared)
+
+        if self.check_kl_divergence:
+            # Perform KL Divergence check
+            learning_rate = self.default_learning_rate
+            for j in range(3):
+                kl_difference = self.avg_kl_divergence(start_states, new_policy_parameters, current_policy_parameters)
+                if kl_difference < self.kl_threshold:
+                    self.set_policy_parameters(new_policy_parameters)
+                    break
+                else:
+                    logger.debug("Not updating policy parameter as kl_difference was %f. Learning rate=%f",
+                                 kl_difference,
+                                 learning_rate)
+                    learning_rate /= 2  # reduce learning rate
+                    # recalculate gradient using the new learning rate
+                    new_policy_parameters = self.__calculate_new_parameters(current_policy_parameters, d_error_squared,
+                                                                            learning_rate=learning_rate)
+
         self.set_policy_parameters(new_policy_parameters)
 
     def update_parameters(self, d_error_squared, state_transitions):
@@ -167,7 +187,7 @@ class SoftmaxPolicy(object):
 
         return new_parameter
 
-    def avg_kl_divergence(self, state_transitions, new_policy_parameters, old_policy_parameters):
+    def avg_kl_divergence(self, start_states, new_policy_parameters, old_policy_parameters):
         """
         S = sum(pk * log(pk / qk), axis=0)
         :return:
@@ -181,11 +201,11 @@ class SoftmaxPolicy(object):
         return average KL-Divergence
         """
         kl_sum = 0
-        for state_transition in state_transitions:
+        for start_state in start_states:
             self.set_policy_parameters(new_policy_parameters)
-            _, new_action_distribution = self.get_action(self.feature.phi(state_transition.get_start_state()))
+            _, new_action_distribution = self.get_action(start_state)
             self.set_policy_parameters(old_policy_parameters)
-            _, old_action_distribution = self.get_action(self.feature.phi(state_transition.get_start_state()))
+            _, old_action_distribution = self.get_action(start_state)
             kl_sum += stats.entropy(new_action_distribution, old_action_distribution)
 
-        return kl_sum/len(state_transitions)
+        return kl_sum / len(start_states)

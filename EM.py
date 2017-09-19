@@ -16,35 +16,7 @@ import numpy as np
 from datetime import datetime
 import csv
 import multiprocessing
-
-class StateTransition(object):
-    def __init__(self, start_state, action, reward, end_state):
-        self.start_state = start_state
-        self.action = action
-        self.reward = reward
-        self.end_state = end_state
-
-    def __hash__(self):
-        return hash(str(np.concatenate((self.start_state, self.end_state))))
-
-    def __eq__(self, other):
-        return np.array_equal(self.start_state, other.start_state) and np.array_equal(self.end_state, other.end_state)
-
-    def get_start_state(self):
-        return self.start_state
-
-    def get_end_state(self):
-        return self.end_state
-
-    def get_action(self):
-        return self.action
-
-    def get_reward(self):
-        return self.reward
-
-    def get_tuple(self):
-        return self.start_state, self.action, self.reward, self.end_state
-
+import heapq
 
 class EM(object):
 
@@ -54,7 +26,7 @@ class EM(object):
         self.max_steps = props.getint('train', 'max_steps')
         self.step_size = props.getint('train', 'step_size')
         self.num_trajectories = props.getint('trajectory', 'trajectory_size')
-        self.best_trajectory_reward = props.getint('trajectory', 'best_trajectory_reward')
+        self.best_average_reward = props.getint('trajectory', 'best_average_reward')
         self.experience_replay = props.getint('evaluation', 'experience_replay')
         self.__initialise_trajectories()
         self.__initialise_agents()
@@ -139,13 +111,15 @@ class EM(object):
         Select best trajectory and perform policy update
         :return fitness of agent:
         """
-        worst_trajectories = self.trajectories[int(0.9 * self.num_trajectories):]
-        self.trajectories = self.trajectories[0: int(0.9 * self.num_trajectories)] + [random.choice(worst_trajectories) for x in range(int(0.1 * self.num_trajectories))]
+        # worst_trajectories = self.trajectories[int(0.9 * self.num_trajectories):]
+        # self.trajectories = self.trajectories[0: int(0.9 * self.num_trajectories)] + [random.choice(worst_trajectories) for x in range(int(0.1 * self.num_trajectories))]
+        self.trajectories = heapq.nlargest(self.num_trajectories, self.trajectories)
         # self.trajectories.sort(reverse=True)
-
-        if self.trajectories[0][0] >= self.best_trajectory_reward:
+        logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
+        logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
+        # if self.trajectories[0][0] >= self.best_trajectory_reward:
             # Found the best trajectory so now turn policy into greedy one
-            self.agent.policy.is_greedy = True
+            # self.agent.policy.is_greedy = True
 
         all_state_starts = []
         all_state_ends = []
@@ -162,15 +136,7 @@ class EM(object):
         random_indexes = random.sample(range(0, len_state_transitions), self.experience_replay if len_state_transitions > self.experience_replay else len_state_transitions)
         # random_state_transitions = random.sample(state_transitions, self.experience_replay) if len(state_transitions) > self.experience_replay else state_transitions
 
-        # update value function
-        logger.debug("Updating value function")
-        self.agent.update_value_function(random_indexes, all_state_starts, all_state_ends, all_rewards)
-
-        # update policy parameter
-        logger.debug("Updating policy function")
-
-        self.agent.update_policy_function_theano(all_state_starts, all_state_ends, all_actions, all_rewards)
-        # self.agent.update_policy_function(random_state_transitions, state_transitions, self.pool)
+        self.update_agent_params(self.agent, random_indexes, all_state_starts, all_state_ends, all_actions, all_rewards)
 
         new_trajectories = []
         if allow_multiprocessing:
@@ -186,14 +152,14 @@ class EM(object):
                 new_trajectories.append(self.generate_new_trajectory())
 
         # Calculate the average of new trajectories and if its better then the best average then save policy parameters of agent
-        # average_reward = 0
-        # for i in range(len(new_trajectories)):
-        #     average_reward += new_trajectories[i][0]
-        #
-        # average_reward /= len(new_trajectories)
-        # if average_reward >= self.agent.best_average_reward:
-        #     logger.debug('Best average reward is now: %f', average_reward)
-        #     self.agent.save_policy_parameters(average_reward)
+        average_reward = 0
+        for i in range(len(new_trajectories)):
+            average_reward += new_trajectories[i][0]
+
+        average_reward /= len(new_trajectories)
+        if average_reward >= self.best_average_reward:
+            logger.debug("Will be using KL divergence")
+            self.agent.policy.check_kl_divergence = True
 
         self.trajectories += new_trajectories
         # order the trajectories
@@ -211,10 +177,27 @@ class EM(object):
 
         best_trajectory_prob = self.agent.calculate_agent_fitness(best_start_states, best_actions)
 
-        logger.debug("Worst Trajectory reward: %f", self.trajectories[len(self.trajectories) - 1][0])
-        logger.debug("Best Trajectory reward: %f", self.trajectories[0][0])
-
         return best_trajectory_prob
+
+    def update_agent_params(self, agent, random_indexes, all_state_starts, all_state_ends, all_actions, all_rewards):
+        phi = []
+        phi_new = []
+
+        for i in range(len(all_state_starts)):
+            phi.append(agent.feature.phi(all_state_starts[i]))
+            phi_new.append(agent.feature.phi(all_state_ends[i]))
+
+        value_function_phi = []
+        value_function_phi_new = []
+        value_function_rewards = []
+        for index in random_indexes:
+            value_function_phi.append(phi[index])
+            value_function_phi_new.append(phi_new[index])
+            value_function_rewards.append(all_rewards[index])
+
+        agent.update_value_function(value_function_phi, value_function_phi_new, value_function_rewards)
+        agent.update_policy_function_theano(phi, phi_new, all_actions, all_rewards)
+        return agent
 
     def generate_new_trajectory(self):
         #logger.debug("Generating new trajectory")
@@ -280,7 +263,7 @@ def test_agent(agent, iteration_count):
             if display_game:
                 env.render()
             state_features = agent.feature.phi(state)
-            action, actions_distribution = agent.get_policy().get_action_theano(state_features)
+            action, actions_distribution = agent.get_policy().get_action(state_features)
             state, reward, done, info = env.step(action)
             total_rewards += reward
 
