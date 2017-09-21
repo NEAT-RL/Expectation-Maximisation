@@ -187,15 +187,16 @@ class EM(object):
             phi.append(agent.feature.phi(all_state_starts[i]))
             phi_new.append(agent.feature.phi(all_state_ends[i]))
 
-        value_function_phi = []
-        value_function_phi_new = []
-        value_function_rewards = []
-        for index in random_indexes:
-            value_function_phi.append(phi[index])
-            value_function_phi_new.append(phi_new[index])
-            value_function_rewards.append(all_rewards[index])
+        # value_function_phi = []
+        # value_function_phi_new = []
+        # value_function_rewards = []
+        # for index in random_indexes:
+        #     value_function_phi.append(phi[index])
+        #     value_function_phi_new.append(phi_new[index])
+        #     value_function_rewards.append(all_rewards[index])
+        # agent.update_value_function_theano(value_function_phi, value_function_phi_new, value_function_rewards)
 
-        agent.update_value_function(value_function_phi, value_function_phi_new, value_function_rewards)
+        agent.update_value_function_theano(phi, phi_new, all_rewards)
         agent.update_policy_function_theano(phi, phi_new, all_actions, all_rewards)
         return agent
 
@@ -295,7 +296,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=None)
     parser.add_argument('env_id', nargs='?', default='CartPole-v0', help='Select the environment to run')
     parser.add_argument('display', nargs='?', default='false', help='Show display of game. true or false')
-    parser.add_argument('--threads', nargs='?', default='max', help='Number of threads to use. 0 means no threads')
+    parser.add_argument('--threads', nargs='?', default='0', help='Number of threads to use. 0 means no threads')
     args = parser.parse_args()
 
     # Call `undo_logger_setup` if you want to undo Gym's logger setup

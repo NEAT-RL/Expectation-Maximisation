@@ -1,5 +1,20 @@
 import numpy as np
 import math
+from sklearn import neural_network
+
+
+class RandomNeuralNetFeature(object):
+    def __init__(self, input_dimension, output_dimension):
+        # create random example
+        state = [np.random.rand(input_dimension) for i in range(1)]
+
+        test_phi = [np.random.rand(output_dimension) for i in range(1)]
+
+        self.clf = neural_network.MLPRegressor(alpha=1e-5, hidden_layer_sizes=(5, 2), random_state=1)
+        self.clf.fit(state, test_phi)
+
+    def phi(self, state):
+        return self.clf.predict([state]).flatten()
 
 
 class DiscretizedFeature(object):
